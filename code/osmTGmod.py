@@ -19,14 +19,15 @@
 # Grid_Model main Module
 
 # Imports Database Modules
+
 import psycopg2
-from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT as _il # Needed for creating Databases
+from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT as _il  # Needed for creating Databases
 import subprocess
 import os
 import urllib
 import datetime
 import sys
-
+import stat
 import shutil
 
 import general_funcs
@@ -36,20 +37,19 @@ import qgis_projects
 
 
 class grid_model:
-
     def __init__(self,
-                    database,
-                    password,
-                    qgis_processing_path,
-                    host='192.168.0.46',
-                    port='5432',
-                    user='postgres'
-                    ):
+                 database,
+                 password,
+                 qgis_processing_path,
+                 host='192.168.0.46',
+                 port='5432',
+                 user='postgres'
+                 ):
 
-        self.host=host
-        self.port=port
-        self.user=user
-        self.password=password
+        self.host = host
+        self.port = port
+        self.user = user
+        self.password = password
         self.database = database
 
         self.standard_db = 'postgres'
@@ -60,28 +60,28 @@ class grid_model:
 
         try:
             # get a connection, if a connect cannot be made an exception will be raised here
-            conn_server = psycopg2.connect( host=self.host,
-                                            port=self.port,
-                                            database=self.standard_db,
-                                            user=self.user,
-                                            password=self.password)
+            conn_server = psycopg2.connect(host=self.host,
+                                           port=self.port,
+                                           database=self.standard_db,
+                                           user=self.user,
+                                           password=self.password)
             cur_server = conn_server.cursor()
             print "Connected to Server!"
         except:
             # Get the most recent exception
             exceptionType, exceptionValue, exceptionTraceback = sys.exc_info()
             # Exit the script and print an error telling what happened.
-            sys.exit("Server connection failed!\n ->%s" % (exceptionValue))
+            sys.exit("Server connection failed!\n ->%s" % exceptionValue)
 
         print "Connecting to Database..."
 
         try:
             # get a connection, if a connect cannot be made an exception will be raised here
             self.conn = psycopg2.connect(host=self.host,
-                                port=self.port,
-                                database=self.database,
-                                user=self.user,
-                                password=self.password)
+                                         port=self.port,
+                                         database=self.database,
+                                         user=self.user,
+                                         password=self.password)
             # conn.cursor will return a cursor object, you can use this cursor to perform queries
             self.cur = self.conn.cursor()
             print "Connected to Database!"
@@ -90,15 +90,16 @@ class grid_model:
             # Get the most recent exception
             exceptionType, exceptionValue, exceptionTraceback = sys.exc_info()
             # Exit the script and print an error telling what happened.
-            print ("There is no Database named '%s'!" % (self.database))
-            choice = raw_input("Do you wish to create Database '%s' and build up osmTgmod-database?:" % (self.database)).lower()
+            print ("There is no Database named '%s'!" % self.database)
+            choice = raw_input(
+                "Do you wish to create Database '%s' and build up osmTgmod-database?:" % self.database).lower()
 
             if general_funcs.ask_yes_no(choice) == True:
                 print "OK lets go! Creating Database..."
 
                 # Creates new Database
                 conn_server.set_isolation_level(_il)
-                cur_server.execute('CREATE DATABASE %s' %self.database)
+                cur_server.execute('CREATE DATABASE %s' % self.database)
                 # conn_server.commit()
                 conn_server.close()
                 print "New Database Created!"
@@ -108,17 +109,17 @@ class grid_model:
                 try:
                     # get a connection, if a connection cannot be made an exception will be raised here
                     self.conn = psycopg2.connect(host=self.host,
-                                port=self.port,
-                                database=self.database,
-                                user=self.user,
-                                password=self.password)
+                                                 port=self.port,
+                                                 database=self.database,
+                                                 user=self.user,
+                                                 password=self.password)
 
                     self.cur = self.conn.cursor()
                     print "Connected to Database!"
 
                     print "Creating Status-Table..."
                     # Creates a new table for documenting Database Status
-                    self.cur.execute ("""
+                    self.cur.execute("""
                         DROP TABLE IF EXISTS _db_status;
                         CREATE TABLE _db_status (module TEXT, status BOOLEAN);
                         INSERT INTO _db_status (module, status) VALUES ('grid_model', FALSE);""")
@@ -128,7 +129,8 @@ class grid_model:
                     # Get the most recent exception
                     exceptionType, exceptionValue, exceptionTraceback = sys.exc_info()
                     # Exit the script and print an error telling what happened.
-                    print ("Undefinded Problem! Could not connect to new Database '%s'! (Please drop new database and try again)" % (self.database))
+                    print (
+                        "Undefinded Problem! Could not connect to new Database '%s'! (Please drop new database and try again)" % self.database)
 
             else:
                 sys.exit("NO Database is created - Programm cancelled by user!")
@@ -165,18 +167,19 @@ class grid_model:
                 sys.exit("No OSM-Data is imported. Grid Model is NOT ready to use!")
 
         else:
-            print "OSM-Data downloaded: %s" %downloaded
+            print "OSM-Data downloaded: %s" % downloaded
 
 
-        # Copying QGis-Processing Scripts
+            # Copying QGis-Processing Scripts
             # Writing conn-File
         print "Writing QGis-processing files..."
-        conn_str = """host=%s port=%s user=%s dbname=%s password=%s""" %(self.host,self.port,self.user,self.database,self.password)
-        fh = open(qgis_processing_path + "conn.txt","w")
+        conn_str = """host=%s port=%s user=%s dbname=%s password=%s""" % (
+            self.host, self.port, self.user, self.database, self.password)
+        fh = open(qgis_processing_path + "conn.txt", "w")
         fh.write(conn_str)
         fh.close()
 
-            # Writing Processing files
+        # Writing Processing files
         qgis_processing.write_processing(qgis_processing_path)
 
         print "Writing QGis-poject files..."
@@ -184,13 +187,12 @@ class grid_model:
 
         print "Grid Model is ready to use!"
 
-
-
     # Function to download OSM-Data
     def download_osm_data(self, filename):
         osm_data = urllib.URLopener()
         # existing data is overwritten
-        osm_data.retrieve("http://ftp5.gwdg.de/pub/misc/openstreetmap/download.geofabrik.de/germany-latest.osm.pbf", self.raw_data_dir + "/" + filename)
+        osm_data.retrieve("http://ftp5.gwdg.de/pub/misc/openstreetmap/download.geofabrik.de/germany-latest.osm.pbf",
+                          self.raw_data_dir + "/" + filename)
 
     # Function to filter OSM-Data
     def osmosis_filter(self, filename_raw, filename_filter):
@@ -200,10 +202,15 @@ class grid_model:
         file_path = self.raw_data_dir + "/" + filename_raw
         output_file_path = self.raw_data_dir + "/" + filename_filter
 
-        proc = subprocess.Popen('%s --rbf %s --tf accept-ways power=* --tf accept-relations route=power --used-node --wb %s'
-                         %(osmosis_path, file_path, output_file_path), shell=True)
+        # set the osmosis file as executable
+        st = os.stat(osmosis_path)
+        os.chmod(osmosis_path, st.st_mode | stat.S_IEXEC)
+
+        proc = subprocess.Popen(
+            '%s --rbf %s --tf accept-ways power=* --tf accept-relations route=power --used-node --wb %s'
+            % (osmosis_path, file_path, output_file_path), shell=True)
         print "Filtering OSM-Data..."
-        proc.wait() # To make sure Script waits until Osmosis is ready...
+        proc.wait()  # To make sure Script waits until Osmosis is ready...
 
         print "Filtering Complete!"
 
@@ -224,10 +231,15 @@ class grid_model:
         osmosis_path = os.getcwd() + '/osmosis/bin/osmosis'
         file_path = self.raw_data_dir + "/" + filename
 
+        # set the osmosis file as executable
+        st = os.stat(osmosis_path)
+        os.chmod(osmosis_path, st.st_mode | stat.S_IEXEC)
+
         proc = subprocess.Popen('%s --read-pbf %s --write-pgsql database=%s host=%s user=%s password=%s'
-                         %(osmosis_path, file_path, self.database, self.host, self.user, self.password), shell=True)
+                                % (osmosis_path, file_path, self.database, self.host, self.user, self.password),
+                                shell=True)
         print 'Importing OSM-Data...'
-        proc.wait() # To make sure Script waits until Osmosis is ready...
+        proc.wait()  # To make sure Script waits until Osmosis is ready...
 
         # After updating OSM-Data, power_tables (for editing) have to be updated as well
         print "Creating power-tables..."
@@ -238,12 +250,11 @@ class grid_model:
         v_now = datetime.datetime.now()
         v_date = str(v_now.year) + '-' + str(v_now.month) + '-' + str(v_now.day)
 
-        self.cur.execute("UPDATE osm_metadata SET downloaded = '%s', imported = '%s'" %(osm_date, v_date)) # No good translation
+        self.cur.execute(
+            "UPDATE osm_metadata SET downloaded = '%s', imported = '%s'" % (osm_date, v_date))  # No good translation
         self.conn.commit()
 
         print "Import Complete!"
-
-
 
     # Function to update database
     def update_osm_data(self):
@@ -265,19 +276,18 @@ class grid_model:
                 # date for file-naming
                 v_now = datetime.datetime.now()
                 if v_now.day < 10:
-                    v_day = '0'+ str(v_now.day)
+                    v_day = '0' + str(v_now.day)
                 else:
                     v_day = str(v_now.day)
                 if v_now.month < 10:
-                    v_month = '0'+ str(v_now.month)
+                    v_month = '0' + str(v_now.month)
                 else:
                     v_month = str(v_now.month)
 
                 v_date = str(v_now.year) + '-' + v_month + '-' + v_day
 
-                filename_raw = "osm_germany_%s.osm.pbf" %v_date
+                filename_raw = "osm_germany_%s.osm.pbf" % v_date
                 filename_filter = "powerfilter_" + filename_raw
-
 
                 print "Downloading OSM Data..."
                 self.download_osm_data(filename_raw)
@@ -297,8 +307,8 @@ class grid_model:
                 print """Info: Unfiltered osm.pbf-File needs to be in "raw_data"-Directory"""
 
                 filename_raw = raw_input("Name of raw OSM-file (e.g. germany-latest.osm.pbf):")
-                filename_filter = raw_input("Name of filtered (destination) OSM-file (e.g. germany-latest-filtered.osm.pbf):")
-
+                filename_filter = raw_input(
+                    "Name of filtered (destination) OSM-file (e.g. germany-latest-filtered.osm.pbf):")
 
                 self.osmosis_filter(filename_raw, filename_filter)
 
@@ -313,7 +323,6 @@ class grid_model:
                 filename_filter = raw_input("Name of filtered OSM-file:")
                 v_date = raw_input("Download Date (E.g. 2015-10-23):")
 
-
                 self.osmosis_import(filename_filter, v_date)
 
                 not_valid = False
@@ -322,11 +331,8 @@ class grid_model:
             else:
                 print "Not a valid answer!"
 
-
-
-
-
-    def execute_abstraction(self, v_plan_ids, v_year, main_station, comment = None): # None is 'translated' to NULL in Postgres (See: Adaptation of Python values to SQL types in Docu!)
+    def execute_abstraction(self, v_plan_ids, v_year, main_station,
+                            comment=None):  # None is 'translated' to NULL in Postgres (See: Adaptation of Python values to SQL types in Docu!)
         """
         Executes the abstraction.
         Takes 2 arguments: 1. Plan_IDs (String), 2. Year (INT).
@@ -352,40 +358,34 @@ class grid_model:
 
         print "Abstraction complete!"
 
-
-
-    def write_to_csv (self, result_id, path):
+    def write_to_csv(self, result_id, path):
 
         tables = ['bus_data', 'branch_data', 'dcline_data', 'substations', 'problem_log', 'plz_subst', 'nuts3_subst']
         for table in tables:
-
             print 'writing %s...' % table
 
             filename = path + str(result_id) + '_' + table + ".csv"
-            query = 'SELECT * FROM results.%s WHERE result_id = %s' %(table, str(result_id))
+            query = 'SELECT * FROM results.%s WHERE result_id = %s' % (table, str(result_id))
 
             outputquery = "COPY ({0}) TO STDOUT WITH DELIMITER ',' CSV HEADER".format(query)
 
-            fh = open(filename,"w")
+            fh = open(filename, "w")
 
             self.cur.copy_expert(outputquery, fh)
 
-
             fh.close()
 
-        print 'All tables written to %s!' %path
-
+        print 'All tables written to %s!' % path
 
     def insert_plan(self, id, name, comment):
-        self.cur.execute ("INSERT INTO entwicklungsplan (id, plan, comment) VALUES (%s, %s, %s)", (id, name, comment))
+        self.cur.execute("INSERT INTO entwicklungsplan (id, plan, comment) VALUES (%s, %s, %s)", (id, name, comment))
         self.conn.commit()
 
         print "Plan successfully inserted!"
 
-
     def copy_plan(self, plan_id_old, plan_id_new):
 
-        self.cur.execute ("""
+        self.cur.execute("""
             INSERT INTO anwendung_aenderung (aenderungs_id, plan_id, jahr, plan_intern_id, copied, copied_from)
 	            SELECT aenderungs_id, %s, jahr, plan_intern_id, TRUE, %s
 	                FROM anwendung_aenderung
@@ -394,8 +394,7 @@ class grid_model:
 
         print "Plan successfully copied!"
 
-
-    def information (self):
+    def information(self):
 
         print """
         You can display the following information: \n
@@ -411,20 +410,20 @@ class grid_model:
 
             try:
                 self.cur.execute("SELECT downloaded, imported FROM osm_metadata;")
-                table =  self.cur.fetchall()
+                table = self.cur.fetchall()
                 for record in table:
                     print "Downloaded: ", record[0]
                     print "Imported:", record[1]
             except:
                 # Get the most recent exception
                 exceptionType, exceptionValue, exceptionTraceback = sys.exc_info()
-                print 'Error while fetching Data! Error: %s' %(exceptionValue)
+                print 'Error while fetching Data! Error: %s' % exceptionValue
 
         if choice == '2':
 
             try:
                 self.cur.execute("SELECT id, plan, comment FROM entwicklungsplan;")
-                table =  self.cur.fetchall()
+                table = self.cur.fetchall()
                 for record in table:
                     print "ID: ", record[0]
                     print "Grid-Development-Plan:", record[1]
@@ -432,13 +431,14 @@ class grid_model:
             except:
                 # Get the most recent exception
                 exceptionType, exceptionValue, exceptionTraceback = sys.exc_info()
-                print 'Error while fetching Data! Error: %s' %(exceptionValue)
+                print 'Error while fetching Data! Error: %s' % exceptionValue
 
         if choice == '3':
 
             try:
-                self.cur.execute("SELECT id, osm_date, abstraction_date, applied_plans, applied_year, user_comment FROM results.results_metadata;")
-                table =  self.cur.fetchall()
+                self.cur.execute(
+                    "SELECT id, osm_date, abstraction_date, applied_plans, applied_year, user_comment FROM results.results_metadata;")
+                table = self.cur.fetchall()
                 for record in table:
                     print "ID: ", record[0]
                     print "OSM-Downloaded:", record[1]
@@ -450,13 +450,11 @@ class grid_model:
             except:
                 # Get the most recent exception
                 exceptionType, exceptionValue, exceptionTraceback = sys.exc_info()
-                print 'Error while fetching Data! Error: %s' %(exceptionValue)
+                print 'Error while fetching Data! Error: %s' % exceptionValue
 
         elif choice == '4':
 
             print "Quit!"
-
-
 
 
 # Loads grid model if executed as script...
@@ -501,7 +499,7 @@ if __name__ == '__main__':
             except:
                 # Get the most recent exception
                 exceptionType, exceptionValue, exceptionTraceback = sys.exc_info()
-                print 'Error while updating/importing! Error: %s' %(exceptionValue)
+                print 'Error while updating/importing! Error: %s' % (exceptionValue)
 
         elif choice == '2':
 
@@ -515,19 +513,19 @@ if __name__ == '__main__':
             except:
                 # Get the most recent exception
                 exceptionType, exceptionValue, exceptionTraceback = sys.exc_info()
-                print 'Error while abstracting! Error: %s' %(exceptionValue)
+                print 'Error while abstracting! Error: %s' % (exceptionValue)
 
         elif choice == '3':
             result_dir = os.path.dirname(os.getcwd()) + "/results/"
             result_id = raw_input("Result ID:")
-            path = raw_input("Result Path (default: "+result_dir+"):") or result_dir
+            path = raw_input("Result Path (default: " + result_dir + "):") or result_dir
 
             try:
                 grid_model.write_to_csv(result_id, path)
             except:
                 # Get the most recent exception
                 exceptionType, exceptionValue, exceptionTraceback = sys.exc_info()
-                print 'Error while exporting CSV! Error: %s' %(exceptionValue)
+                print 'Error while exporting CSV! Error: %s' % (exceptionValue)
 
         elif choice == '4':
 
@@ -538,7 +536,7 @@ if __name__ == '__main__':
             print 'Existing Development-Plans:'
             try:
                 grid_model.cur.execute("SELECT id, plan, comment FROM entwicklungsplan;")
-                table =  grid_model.cur.fetchall()
+                table = grid_model.cur.fetchall()
                 for record in table:
                     print "ID: ", record[0]
                     print "Grid-Development-Plan:", record[1]
@@ -546,18 +544,18 @@ if __name__ == '__main__':
             except:
                 # Get the most recent exception
                 exceptionType, exceptionValue, exceptionTraceback = sys.exc_info()
-                print 'Error while fetching Data! Error: %s' %(exceptionValue)
+                print 'Error while fetching Data! Error: %s' % (exceptionValue)
 
             id = raw_input("New ID of Development-Plan: ")
             name = raw_input("Name of new (empty) Development-Plan (e.g. EnlaG):")
-            comment= raw_input("Comment:")
+            comment = raw_input("Comment:")
 
             try:
                 grid_model.insert_plan(id, name, comment)
             except:
                 # Get the most recent exception
                 exceptionType, exceptionValue, exceptionTraceback = sys.exc_info()
-                print 'Error while inserting Plan! Error: %s' %(exceptionValue)
+                print 'Error while inserting Plan! Error: %s' % (exceptionValue)
 
 
         elif choice == '6':
@@ -569,7 +567,7 @@ if __name__ == '__main__':
             except:
                 # Get the most recent exception
                 exceptionType, exceptionValue, exceptionTraceback = sys.exc_info()
-                print 'Error while copying Plan! Error: %s' %(exceptionValue)
+                print 'Error while copying Plan! Error: %s' % (exceptionValue)
 
         elif choice == '7':
 
