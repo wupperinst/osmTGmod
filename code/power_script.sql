@@ -46,6 +46,8 @@ DROP TABLE IF EXISTS problem_log;
 -- This table can optionally be used for debugging
 CREATE TABLE IF NOT EXISTS debug_vals (explanation TEXT, value TEXT);
 DELETE FROM debug_vals;
+--Example usage:
+--INSERT INTO debug_vals VALUES ('Explanation', 'whatever_value'::TEXT);
 
 
 -- ERSTELLUNG ALLGEMEINER TABELLEN (DEKLARIERUNG EINIGER VARIABLEN)
@@ -278,21 +280,7 @@ UPDATE power_line
 	WHERE 
 	numb_volt_lev - 1 = otg_numb_of_cert_char (cables, ';'); -- Dort, wo die Cables pro Spannungsebene genau identifizierbar sind (Anzahl ';' übereinsimmen)
 
---Debugging:--------------------
-
-INSERT INTO debug_vals VALUES (	'Cables before seperating id=115389859', 
-				(SELECT cables 
-					FROM power_line 
-					WHERE id=115389859
-					LIMIT 1)::TEXT);
-INSERT INTO debug_vals VALUES (	'Cables after seperating id=115389859', 
-				(SELECT cables_array 
-					FROM power_line 
-					WHERE id=115389859
-					LIMIT 1)::TEXT);
-
-
---------------------------------	
+	
 
 	-- UNTERSUCHUNG WIRES
 	
