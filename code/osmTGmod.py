@@ -17,6 +17,8 @@
 ###################################################################################
 
 # Grid_Model main Module
+#This is the 110kV test!
+
 
 # Imports Database Modules
 import psycopg2
@@ -54,7 +56,8 @@ class grid_model:
 
         self.standard_db = 'postgres'
         
-        self.osmosis_path = os.getcwd() + '/osmosis/bin/osmosis'
+        self.home_dir = os.getenv("HOME")
+        self.osmosis_path = self.home_dir + "/src/osmosis/package/bin/osmosis" # Path should be specified in Installation section in Docu
 
         self.raw_data_dir = os.path.dirname(os.getcwd()) + "/raw_data"
         self.result_dir = os.path.dirname(os.getcwd()) + "/results"
@@ -218,10 +221,8 @@ class grid_model:
         file_path = self.raw_data_dir + "/" + filename_raw
         output_file_path = self.raw_data_dir + "/" + filename_filter
 
-        # Accesses Osmosis Installation (Only works with installed Osmosis)
-
         proc = subprocess.Popen('%s --rbf %s --tf accept-ways power=* --tf accept-relations route=power --used-node --wb %s'
-                         %(self.osmosis_path, file_path, output_file_path), shell=False)
+                    %(self.osmosis_path, file_path, output_file_path), shell=True)
                          
         print ("Filtering OSM-Data...")
         proc.wait() # To make sure Script waits until Osmosis is ready...

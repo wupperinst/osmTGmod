@@ -59,6 +59,7 @@ INSERT INTO base_MVA VALUES (100);
 -- (Macht es Sinn eine Mindesspannung zu verwenden?)
 -- Bei den Leitungskennwerten fehlen noch Werte für alle untersuchten Spannungen
 CREATE TABLE min_voltage (voltage INT);
+--INSERT INTO min_voltage (voltage) VALUES (110000);
 INSERT INTO min_voltage (voltage) VALUES (220000);
 --INSERT INTO min_voltage (voltage) VALUES (380000);
 	
@@ -206,7 +207,7 @@ UPDATE power_line SET 	point_substation_id [1] = (SELECT power_substation.id
 							WHERE ST_Within(endpoint, power_substation.poly)
 							LIMIT 1);
 
--- Alle Leitungen, die Anfang und Ende innerhalb innerhalb einer Substation liegen werden gelöscht.							
+-- Alle Leitungen, die Anfang und Ende innerhalb einer Substation liegen werden gelöscht.							
 DELETE FROM power_line WHERE point_substation_id [1] = point_substation_id [2];	
 
 -- DELETE FROM power_line 
@@ -236,20 +237,6 @@ UPDATE power_line
 	voltage_array [3] = otg_get_int_from_semic_string (voltage, 3), 
 	voltage_array [4] = otg_get_int_from_semic_string (voltage, 4);
 
--- Folgender Abschnitt wird nicht benötigt, da alle Spannungen betrachtet werden.
--- evtl. voltage > 380000 = 380000kV bei frequency = 50 setzen (idR. Mappingfehler)
-
--- -- Setzt Spannung = maximal untersuchte Spannung, wo diese überschritten wird
--- -- Hierdurch werden teilweise Mappingfehler behoben	
--- UPDATE power_line SET voltage_array [1] = (SELECT max(voltage) FROM voltage_levels) 
--- 			WHERE voltage_array [1] > (SELECT max(voltage) FROM voltage_levels);
--- UPDATE power_line SET voltage_array [2] = (SELECT max(voltage) FROM voltage_levels) 
--- 			WHERE voltage_array [2] > (SELECT max(voltage) FROM voltage_levels);
--- UPDATE power_line SET voltage_array [3] = (SELECT max(voltage) FROM voltage_levels) 
--- 			WHERE voltage_array [3] > (SELECT max(voltage) FROM voltage_levels);
--- UPDATE power_line SET voltage_array [4] = (SELECT max(voltage) FROM voltage_levels) 
--- 			WHERE voltage_array [4] > (SELECT max(voltage) FROM voltage_levels);
-
 	
 		-- PROBLEM: NULL_voltage
 		-- (Es werden alle power_lines gelöscht, die keine Spannungsinformationen besitzen)
@@ -267,7 +254,6 @@ UPDATE power_line
 			
 	DROP TRIGGER problem_log_trigger ON power_line;
 	
-
 	
 	-- UNTERSUCHUNG CABLES
 
@@ -367,6 +353,7 @@ UPDATE power_line SET all_neighbours = otg_get_all_neighbours (id);
 	-- CABLE- UND FREQUENCY-ANNAHME-ALGORITHMEN
 
 -- Neue Spalte cables_from_neighbour, in die true eingetragen wird, sobald eine Leitung Informationen vom Nachbarn erhalten hat
+-- Should be renamed to info_from_neighbour
 ALTER TABLE power_line ADD COLUMN cables_from_neighbour BOOLEAN;
 
 
@@ -377,7 +364,6 @@ ALTER TABLE power_line ADD COLUMN cables_from_neighbour BOOLEAN;
 -- ... und damit auch cables_sum nicht eindeutig bleiben kann)
 
 SELECT otg_unknown_value_heuristic ();
-
 
 
 
@@ -435,13 +421,7 @@ ALTER TABLE power_circuits DROP COLUMN frequency_text;
 
 
 
--- 	-- MAXIMALE SPANNUNG
--- 		
--- -- Annahme: Alle Spannungen höher als die höchste betrachtete Spannung (voltage_levels) wird als diese angenommen...
--- -- ...Dies erleichtert die Berücksichtigung einiger falsch gemappter Freileitung und mancher Kabel
--- UPDATE power_circuits SET voltage = (SELECT max(voltage) FROM voltage_levels) 
--- 			WHERE voltage > (SELECT max(voltage) FROM voltage_levels);
-
+ 	-- MAXIMALE SPANNUNG
 
 
 	-- INFORMATIONSÜBERGABE POWER_LINE -> power_circ_members
@@ -474,12 +454,32 @@ DELETE FROM power_circ_members mem
 DELETE FROM power_circuits
 	WHERE voltage < (SELECT voltage FROM min_voltage); --NOT IN (SELECT voltage FROM voltage_levels);
 
-		-- ANNAHME: 
+		-- ANNAHME (frequency): 
 		-- Alle Stromkreise, die keinen Frequenzwert haben (und 220kv oder 380kv), bekommen frequency = 50
 UPDATE power_circuits
 	SET frequency = 50
 	WHERE 	frequency IS NULL 
 		AND (voltage = 220000 OR voltage = 380000);
+
+		-- ASSUMPTION (frequency):
+		-- Only 110kV circuits with 3, 6, 9 or 12 cables (not 2 nor 4) get frequency 50
+		-- Also without cable information, frequency is set to 50!!
+UPDATE power_circuits
+	SET frequency = 50
+	WHERE frequency IS NULL
+		AND voltage = 110000
+		AND (	cables IS NULL OR 
+			cables = 3 OR 
+			cables = 6 OR 
+			cables = 9 OR 
+			cables = 12); -- Needs to be checked!
+
+UPDATE power_circuits
+	SET frequency = 16.7
+	WHERE frequency IS NULL
+		AND voltage = 110000
+		AND (	cables = 2 OR 
+			cables = 4); -- Needs to be checked!
 
 	-- PROBLEM: NULL_frequency
 	-- (Löscht alle power_circuits, die keine Frequenz haben)
@@ -492,24 +492,43 @@ UPDATE power_circuits
 			WHERE frequency IS NULL;
 			
 	DROP TRIGGER problem_log_trigger ON power_circuits;
-	
--- Noch Stromkreise löschen, die keine passende Frequenz haben, oder noch immer NULL (mit Niedersachsen ausprobieren)
 
--- Annahme: Alle Stromkreise im Drehstromsystem, die keinen Cable-Eintrag haben (cables = NULL)
+-- 16.7 should not be deleted (at this point), because frequency info can be written in to power_lines, when substracting!!!
+-- 	-- PROBLEM: 16.7 frequency (not really a problem, just docu)
+-- 	-- (Löscht alle power_circuits, die Frequenz = 16.7 haben)
+-- 	CREATE TRIGGER problem_log_trigger
+-- 		AFTER DELETE ON power_circuits
+-- 		FOR EACH ROW 
+-- 		EXECUTE PROCEDURE otg_power_circuits_problem_tg ('frequency=16.7');
+-- 
+-- 		DELETE FROM power_circuits -- Impliziert Cascadenlöschung der Members... 
+-- 			WHERE frequency = 16.7;
+-- 			
+-- 	DROP TRIGGER problem_log_trigger ON power_circuits;
+
+	
+-- Annahme: Stromkreise, die keinen Cable-Eintrag haben (cables = NULL)
 -- bekommen bestimmte cables
 -- (Es sind nun nurnoch circuit_members mit für das Modell gebrauchter Spannung enthalten)
 UPDATE power_circuits
 	SET cables = 3
 	WHERE cables IS NULL AND
 	frequency = 50; 
--- ... Alle HGÜ-Leitungen und Bahnstrom ohne Cable-Eintrag bekommen cables = 2
+-- ... Alle HGÜ-Leitungen ohne Cable-Eintrag bekommen cables = 2
 UPDATE power_circuits
 	SET cables = 2
 	WHERE cables IS NULL AND
 	frequency = 0; 
+-- ... Alle Bahnstromleitungen (freq. = 16.7) ohne Cable-Eintrag bekommen cables = 2
+UPDATE power_circuits
+	SET cables = 2
+	WHERE cables IS NULL AND
+	frequency = 16.7; 
+
+-- At this point, all circuit should have (valid) cable-information!	
 
 	-- PROBLEM: NULL_cables
-	-- (Löscht alle power_circuits, die keine Frequenz haben)
+	-- (Löscht alle power_circuits, die keine Cable-Anzahl haben)
 	CREATE TRIGGER problem_log_trigger
 		AFTER DELETE ON power_circuits
 		FOR EACH ROW 
@@ -663,6 +682,7 @@ DELETE FROM bus_data WHERE origin = 'rel' AND cnt = 0;
 
 -- Ist die Spannung des Stromkreises auf der Leitung nicht vorhanden (Mappingfehler) wird in problem_log geschrieben
 -- Grundlegend wird den Stromkreisspannung mehr "vertraut" als den Leitungsspannungen
+-- Frequenzen können von circuits unter bestimmten Bedingungn in power_lines geschrieben werden.
 SELECT otg_substract_circuits() ;
 
 
@@ -739,8 +759,8 @@ DELETE FROM power_line_sep
 		FOR EACH ROW 
 		EXECUTE PROCEDURE otg_power_line_as_branch_problem_tg ('too_many_circuits_on_power_line');
 
-DELETE FROM power_line_sep 
-	WHERE 	cables < 0;
+	DELETE FROM power_line_sep 
+		WHERE 	cables < 0;
 
 	DROP TRIGGER problem_log_trigger ON power_line_sep;
 
@@ -748,16 +768,50 @@ DELETE FROM power_line_sep
 -- Annahme: Alle noch unbekannten Frequenzen der Spannugnen 220 und 380kv werden 50Hz gesetzt
 -- Da mehrer Frequenzen pro Freileitung vom Tag her nicht berücksichtigt werden können, kann an dieser Stelle ein Fehler
 -- entstehen. 
--- 16.7 hz liegen i.d.R. auf 110kV und wurden schon rausgelöscth und stellen damit kein Problem dar.
+-- 16.7 hz liegen i.d.R. auf 110kV.
 -- Problematisch sind zukünfig geplante HGÜ Leitungen gemeinsam mit 50Hz auf einer Freileitung 
 UPDATE power_line_sep 
 	SET frequency = 50
 	WHERE 	frequency IS NULL 
 		AND (voltage = 220000 OR voltage = 380000);
+
+-- ASSUMPTION: For 110kV, frequency = 50 can be assumed under the following conditions
+UPDATE power_line_sep 
+	SET frequency = 50
+	WHERE 	frequency IS NULL AND 
+		voltage = 110000 AND
+		(	cables IS NULL OR 
+			cables = 3 OR 
+			cables = 6 OR 
+			cables = 9 OR 
+			cables = 12); 
+
+-- ASSUMPTION: For 110kV, frequency = 16.7 can be assumed under the following conditions
+UPDATE power_line_sep 
+	SET frequency = 16.7
+	WHERE 	frequency IS NULL AND 
+		voltage = 110000 AND
+		(	cables = 2 OR 
+			cables = 4); 
+		
 -- Alle noch übekannten Frequenzen werden 50Hz gesetzt.
 UPDATE power_line_sep
 	SET frequency = 50 
-	WHERE frequency IS NULL;
+	WHERE frequency IS NULL; -- this needs to be checked
+		-- there may be still many train-lines (in theory 16.7Hz) among the power-lines
+
+-- I will give it a try and leave 16.7 inside till the end...
+-- 		-- PROBLEM: frequency=16.7 (not really a problem, just docu)
+-- 		-- (Es werden diejenigen power_line_sep gelöscht, die frequency = 16.7 aufweisen) 
+-- 	CREATE TRIGGER problem_log_trigger
+-- 		AFTER DELETE ON power_line_sep
+-- 		FOR EACH ROW 
+-- 		EXECUTE PROCEDURE otg_power_line_as_branch_problem_tg ('frequency=16.7');
+-- 
+-- 	DELETE FROM power_line_sep 
+-- 		WHERE 	frequency = 16.7;
+-- 
+-- 	DROP TRIGGER problem_log_trigger ON power_line_sep;
 
 
 	-- TOPOLOGIE
@@ -842,7 +896,7 @@ ALTER TABLE bus_data DROP COLUMN origin;
 
 	-- ANNAHMEN
 
--- Füllt alle noch nicht bekannten Wires der 380kv und 220kv Spannungsebene mit 4 bzw. 2 wires.
+-- Füllt alle noch nicht bekannten Wires der 380kv, 220kv und 110kV Spannungsebene mit 4, 2 bzw. 1 wires.
 -- (Bei frequenz von 50) 
 -- Alle weiteren noch unbekannten wires von power = 'line' bekommen wires = 1
 SELECT otg_wires_assumption ();
@@ -850,6 +904,7 @@ SELECT otg_wires_assumption ();
 	-- BETRACHTETE FREQUENZEN / ANZAHL CABLE
 
 -- Es werden alle nicht betrachteten Frequenzen (nicht 50 oder 0 HZ) gelöscht.
+-- Here, 16.7Hz (train) transmission lines (branches) are deleted
 DELETE FROM branch_data WHERE 	frequency != 50 AND 
 				frequency != 0;
 
@@ -858,10 +913,9 @@ DELETE FROM branch_data WHERE 	frequency != 50 AND
 -- Dies führt zur Division durch 0
 DELETE FROM branch_data WHERE cables <= 1;
 
--- ... und die dazugehörigen Busses müssen gelöscth werden
+-- ... und die dazugehörigen Busses müssen ebenfalls gelöscht werden
 DELETE FROM bus_data WHERE 	NOT id IN (SELECT f_bus FROM branch_data) AND
 				NOT id IN (SELECT t_bus FROM branch_data);
-
 
 
 
@@ -925,11 +979,13 @@ SELECT otg_graph_dfs ((SELECT id FROM bus_data
 			WHERE substation_id = (SELECT main_station_id FROM main_station)
 			LIMIT 1));
 
--- Es werden die Branches und Busses gelöscht, die zu abgetrennten Netzbereichen gehören.
--- Diese werde zur Zeit nicht ins Problem-Log aufgenommen
-DELETE FROM branch_data WHERE 	f_bus IN (SELECT id FROM bus_data WHERE discovered = false) OR
-				t_bus IN (SELECT id FROM bus_data WHERE discovered = false);
-DELETE FROM bus_data WHERE discovered = false;
+-- This is now disabled!
+-- -- What about this deletion? Can't it be done later (on specific demand)
+-- -- Es werden die Branches und Busses gelöscht, die zu abgetrennten Netzbereichen gehören.
+-- -- Diese werde zur Zeit nicht ins Problem-Log aufgenommen
+-- DELETE FROM branch_data WHERE 	f_bus IN (SELECT id FROM bus_data WHERE discovered = false) OR
+-- 				t_bus IN (SELECT id FROM bus_data WHERE discovered = false);
+-- DELETE FROM bus_data WHERE discovered = false;
 
 -- Erweitert branch_data um einfache Topologische Geometrie
 ALTER TABLE branch_data ADD COLUMN simple_geom GEOMETRY (LINESTRING, 4326);

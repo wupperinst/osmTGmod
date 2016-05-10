@@ -89,4 +89,6 @@ CREATE TABLE transformer_specifications (
 -- Springer: Elektrische Kraftwerke und Netze S. 228					
 
 INSERT INTO transformer_specifications 
-	VALUES (DEFAULT, 1000, 13.5); -- Springer: Elektrische Kraftwerke und Netze S. 228
+	VALUES (DEFAULT, 1000, 13.5); -- Springer: Elektrische Kraftwerke und Netze S. 228/219
+
+
