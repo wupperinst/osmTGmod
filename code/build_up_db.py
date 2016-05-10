@@ -23,7 +23,7 @@ def build_up_db(conn, cur):
 
     # LOADS FUNCTIONS AND RESULT SCHEMA
 
-    print "Loading Functions and Result-Schema..."
+    print ("Loading Functions and Result-Schema...")
     # Loads Extensions, Functions, Boundaries, Electrical Properties and Zubau_DB
     # Sripts can be executed again when "reloading" Grid Model
     scripts = ['extensions.sql', 'functions.sql', 'admin_boundaries.sql', 'electrical_properties.sql', 'grid_development.sql', 'build_up_db.sql']
@@ -35,4 +35,4 @@ def build_up_db(conn, cur):
 
     conn.commit()
 
-    print 'osmTGmod-database has been built up!'
+    print ('osmTGmod-database has been built up!')

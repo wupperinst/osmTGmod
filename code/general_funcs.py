@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 ###################################################################################
 #                                                                                 #
 #   Copyright "2015" "Wuppertal Institut"                                         #
@@ -16,17 +17,22 @@
 #                                                                                 #
 ###################################################################################
 
+import codecs # Necessary in Python 3 (no standard String encoding)
+
 # Function to execute entire SQL file
 def execute_sql (conn, cur, filepath):
-    fd = open(filepath, 'r')
-    sqlFile = fd.read().decode("utf-8-sig").encode("utf-8")
+    # Can't remember why one has to use utf-8-sig
+    fd = codecs.open(filepath, 'r', "utf-8-sig")
+    
+    sqlfile = fd.read()
+    
     fd.close()
 
-    print 'Executing SQL-file %s...' %filepath
-    cur.execute(sqlFile)
+    print ('Executing SQL-file %s...' %filepath)
+    cur.execute(sqlfile)
     conn.commit()
 
-    print 'SQL-file %s executed!' %filepath
+    print ('SQL-file %s executed!' %filepath)
 
 
 # Yes-No function
@@ -41,5 +47,5 @@ def ask_yes_no(choice):
         elif choice in no:
             return False
         else:
-            choice = raw_input("Please answer Yes or No:").lower()
+            choice = input("Please answer Yes or No:").lower()
 
