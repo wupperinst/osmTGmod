@@ -64,7 +64,7 @@ INSERT INTO edit_power_relations
 """, (voltage, cables, wires, frequency, v_members))
 conn.commit()
 
-print 'Relation wurde gespeichert'
+print ('Relation wurde gespeichert')
 '''
 
     fh = open(qgis_processing_path + "new_relation.py","w")
@@ -99,7 +99,7 @@ UPDATE zuordnung
 """, (plan_id, year, plan_intern_id, description, user_comment))
 conn.commit()
 
-print 'Zuordnung wurde gespeichert und Change_log-View erneuert' '''
+print ('Zuordnung wurde gespeichert und Change_log-View erneuert') '''
 
     fh = open(qgis_processing_path + "metadata_grid_development.py","w")
     fh.write(metadata_grid_development)
@@ -125,7 +125,7 @@ UPDATE results.view_results
 """, (result_id,))
 conn.commit()
 
-print 'Result Nr. %s is displayed.' %(result_id) '''
+print ('Result Nr. %s is displayed.' %(result_id)) '''
 
     fh = open(qgis_processing_path + "show_results.py","w")
     fh.write(show_results)
