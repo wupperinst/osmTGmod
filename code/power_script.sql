@@ -43,6 +43,10 @@ DROP TABLE IF EXISTS dcline_data;
 
 DROP TABLE IF EXISTS problem_log;
 
+-- This table can optionally be used for debugging
+CREATE TABLE IF NOT EXISTS debug_vals (explanation TEXT, value TEXT);
+DELETE FROM debug_vals;
+
 
 -- ERSTELLUNG ALLGEMEINER TABELLEN (DEKLARIERUNG EINIGER VARIABLEN)
 
@@ -59,8 +63,8 @@ INSERT INTO base_MVA VALUES (100);
 -- (Macht es Sinn eine Mindesspannung zu verwenden?)
 -- Bei den Leitungskennwerten fehlen noch Werte für alle untersuchten Spannungen
 CREATE TABLE min_voltage (voltage INT);
---INSERT INTO min_voltage (voltage) VALUES (110000);
-INSERT INTO min_voltage (voltage) VALUES (220000);
+INSERT INTO min_voltage (voltage) VALUES (110000);
+--INSERT INTO min_voltage (voltage) VALUES (220000);
 --INSERT INTO min_voltage (voltage) VALUES (380000);
 
 	-- ERSTELLEN DER TOPOLOGIE-TABELLEN
@@ -274,7 +278,21 @@ UPDATE power_line
 	WHERE 
 	numb_volt_lev - 1 = otg_numb_of_cert_char (cables, ';'); -- Dort, wo die Cables pro Spannungsebene genau identifizierbar sind (Anzahl ';' übereinsimmen)
 
+--Debugging:--------------------
 
+INSERT INTO debug_vals VALUES (	'Cables before seperating id=115389859', 
+				(SELECT cables 
+					FROM power_line 
+					WHERE id=115389859
+					LIMIT 1)::TEXT);
+INSERT INTO debug_vals VALUES (	'Cables after seperating id=115389859', 
+				(SELECT cables_array 
+					FROM power_line 
+					WHERE id=115389859
+					LIMIT 1)::TEXT);
+
+
+--------------------------------	
 
 	-- UNTERSUCHUNG WIRES
 	
@@ -760,7 +778,7 @@ CREATE TABLE power_line_sep AS SELECT * FROM branch_data LIMIT 0;
 -- Aufgetrennte power_lines werden in power_line_sep geschrieben
 -- Lines bekommen Relation_id = 0			
 SELECT otg_seperate_voltage_levels ();
-DROP TABLE power_line;
+--DROP TABLE power_line;
 
 
 	-- LÖSCHUNGEN
