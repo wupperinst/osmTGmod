@@ -28,6 +28,7 @@ import os
 import urllib
 import datetime
 import sys
+import stat
 
 #import shutil
 
@@ -57,8 +58,16 @@ class grid_model:
         self.standard_db = 'postgres'
         
         self.home_dir = os.getenv("HOME")
-        self.osmosis_path = self.home_dir + "/src/osmosis/package/bin/osmosis" # Path should be specified in Installation section in Docu
 
+        # self.osmosis_path = self.home_dir + "/src/osmosis/package/bin/osmosis"
+        # Path should be specified in Installation section in Docu
+        # Switch for different os shall be implemented 
+        self.osmosis_path = os.getcwd() + '/osmosis/bin/osmosis'
+
+       # set the osmosis file as executable
+        st = os.stat(self.osmosis_path)
+        os.chmod(self.osmosis_path, st.st_mode | stat.S_IEXEC)
+        
         self.raw_data_dir = os.path.dirname(os.getcwd()) + "/raw_data"
         self.result_dir = os.path.dirname(os.getcwd()) + "/results"
         self.qgis_projects_dir = os.path.dirname(os.getcwd()) + "/qgis_projects"
@@ -488,8 +497,10 @@ if __name__ == '__main__':
     database = input('database name:')
     password = input('password:')
 
-    # QGis 2.8 uses this path!
-    proposed_path = "/home/malte/.qgis2/processing/scripts/"
+    # QGis 2.8 uses this path! For old QGis Versions an extra condition is needed 
+    # proposed_path = "/home/malte/.qgis2/processing/scripts/"
+    proposed_path = os.getenv("HOME") + "/.qgis2/processing/scripts/"
+
     qgis_processing_path = input('QGis-Processing Path (make sure you have writing permission)(default: ' + proposed_path + '):') or proposed_path
     
     host = input('host (default 192.168.0.46):') or '192.168.0.46'
