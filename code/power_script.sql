@@ -370,6 +370,10 @@ ALTER TABLE power_line ADD COLUMN cables_from_neighbour BOOLEAN;
 
 SELECT otg_unknown_value_heuristic ();
 
+-- ASSUMPTION
+-- Assumes that lines with 110kV with cables (at 110kV) IS NULL and freuq IS NULL or 50...
+-- receive cables=3
+SELECT otg_110kv_cables ();
 
 
 -- DATENUMWANDLUNG CIRCUIT_MEMBERS
