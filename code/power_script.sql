@@ -1021,9 +1021,9 @@ ALTER TABLE bus_data ADD COLUMN discovered BOOLEAN DEFAULT false;
 
 -- Evtl. vorher untersuchen
 -- Untersucht den Graph auf Zusammenhang (beginnt beim Slack-knoten)
-SELECT otg_graph_dfs ((SELECT id FROM bus_data 
-			WHERE substation_id = (SELECT main_station_id FROM main_station)
-			LIMIT 1));
+--SELECT otg_graph_dfs ((SELECT id FROM bus_data 
+--			WHERE substation_id = (SELECT main_station_id FROM main_station)
+--			LIMIT 1));
 
 -- This is now disabled!
 -- -- What about this deletion? Can't it be done later (on specific demand)
