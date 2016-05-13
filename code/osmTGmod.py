@@ -22,13 +22,11 @@
 # Imports Database Modules
 from __future__ import (absolute_import, division, print_function) #, unicode_literals)
 from builtins import *
-import unicodecsv
-import io
+#import unicodecsv
+#import io
 
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT as _il # Needed for creating Databases
-psycopg2.extensions.register_type(psycopg2.extensions.UNICODE)
-psycopg2.extensions.register_type(psycopg2.extensions.UNICODEARRAY)
 
 import subprocess
 import os
@@ -423,7 +421,7 @@ class grid_model:
 
             outputquery = "COPY ({0}) TO STDOUT WITH DELIMITER ',' CSV HEADER".format(query)
             
-            fh = io.open(filename,"w")
+            fh = open(filename,"w")
  #           input("Press Enter to continue...")
             self.cur.copy_expert(outputquery, fh)
                        
