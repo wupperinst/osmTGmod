@@ -21,7 +21,8 @@
 
 # Imports Database Modules
 from __future__ import (absolute_import, division, print_function) #, unicode_literals)
-from builtins import *
+from builtins import * # This package seems to be unused
+
 #import unicodecsv
 #import io
 
@@ -73,29 +74,36 @@ class grid_model:
         
         self.home_dir = os.getenv("HOME")
 
-        
+        # Osomosis platfrom adaption:
         # Path should be specified in Installation section in Docu
         # Switch for different os, if Mac is used, use the local osmosis path shall be implemented 
         if platform.system() == "Darwin": 
             self.osmosis_path = os.getcwd() + '/osmosis/bin/osmosis'
+            print("Detected platform: Darwin")
+            # set the osmosis file as executable
+            # Is this just needed on MAC?
+            st = os.stat(self.osmosis_path)
+            os.chmod(self.osmosis_path, st.st_mode | stat.S_IEXEC)
+        
         elif platform.system() == "Linux" or platform.system() == "Linux2":
             self.osmosis_path = self.home_dir + "/src/osmosis/package/bin/osmosis"
+            print("Detected platform: Linux")
+            
         elif platform.system() == "Win32" or platform.system() == "win32":
             self.osmosis_path = os.getcwd() + '/osmosis/bin/osmosis' # Shall be tested on a Windows system
+            print("Detected platform: Windows")
+            
         else:
-             self.osmosis_path = os.getcwd() + '/osmosis/bin/osmosis'
-
-        
-
-       # set the osmosis file as executable
-        st = os.stat(self.osmosis_path)
-        os.chmod(self.osmosis_path, st.st_mode | stat.S_IEXEC)
-        
+            self.osmosis_path = os.getcwd() + '/osmosis/bin/osmosis'
+            print("Detected platform: None")
+   
+        # Setting osmTGmod folder structure: 
+        print("Checking/Creating file directories")
         self.raw_data_dir = os.path.dirname(os.getcwd()) + "/raw_data"
         self.result_dir = os.path.dirname(os.getcwd()) + "/results"
         self.qgis_projects_dir = os.path.dirname(os.getcwd()) + "/qgis_projects"
         
-        print("Checking/Creating file directories")
+        
         # Basic folders are created if not existent
         if not os.path.exists(self.raw_data_dir):
             os.makedirs(self.raw_data_dir)
@@ -106,6 +114,7 @@ class grid_model:
         if not os.path.exists(self.qgis_projects_dir):
             os.makedirs(self.qgis_projects_dir)
 
+        # Server connection:
         print ("Connecting to Server...")
 
         try:
