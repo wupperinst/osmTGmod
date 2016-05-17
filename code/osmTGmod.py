@@ -72,32 +72,33 @@ class grid_model:
 
         self.standard_db = 'postgres'
         
-        self.home_dir = os.getenv("HOME")
-
-        # Osomosis platfrom adaption:
-        # Path should be specified in Installation section in Docu
-        # Switch for different os, if Mac is used, use the local osmosis path shall be implemented 
+        self.platform = None # Platform specific variable
+        
+        
+        ## General Platform Check (Not needed)
         if platform.system() == "Darwin": 
-            self.osmosis_path = os.getcwd() + '/osmosis/bin/osmosis'
+            self.platform = 'mac' 
             print("Detected platform: Darwin")
-            # set the osmosis file as executable
-            # Is this just needed on MAC?
-            st = os.stat(self.osmosis_path)
-            os.chmod(self.osmosis_path, st.st_mode | stat.S_IEXEC)
         
         elif platform.system() == "Linux" or platform.system() == "Linux2":
-            self.osmosis_path = self.home_dir + "/src/osmosis/package/bin/osmosis"
+            self.platform = 'lin'            
             print("Detected platform: Linux")
             
         elif platform.system() == "Win32" or platform.system() == "win32":
-            self.osmosis_path = os.getcwd() + '/osmosis/bin/osmosis' # Shall be tested on a Windows system
+            self.platform = 'win'             
             print("Detected platform: Windows")
             
         else:
-            self.osmosis_path = os.getcwd() + '/osmosis/bin/osmosis'
             print("Detected platform: None")
    
-        # Setting osmTGmod folder structure: 
+   
+        ## Osmosis Path and Activation
+        self.osmosis_path = os.getcwd() + '/osmosis/bin/osmosis' # The provided Osmosis Version is allways used
+        st = os.stat(self.osmosis_path) 
+        os.chmod(self.osmosis_path, st.st_mode | stat.S_IEXEC) # Set the osmosis file as executable
+   
+   
+        ## Setting osmTGmod folder structure: 
         print("Checking/Creating file directories")
         self.raw_data_dir = os.path.dirname(os.getcwd()) + "/raw_data"
         self.result_dir = os.path.dirname(os.getcwd()) + "/results"
@@ -533,15 +534,15 @@ if __name__ == '__main__':
     password = input('password:')
 
 
-    if os.path.exists(os.getenv("HOME") + "/.qgis2/processing/scripts/"):
-        proposed_path = os.getenv("HOME") + "/.qgis2/processing/scripts/"
-    elif os.path.exists("/home/malte/.qgis2/processing/scripts/"): # Hier brauch es noch eine Lösung, in der nicht /malte/ steht :)
-        proposed_path = "/home/malte/.qgis2/processing/scripts/"
-    else:
-        print("Need input for Qgis path!")
-        
+    print("Checking QGis processing path...")
     
-    qgis_processing_path = input('QGis-Processing Path (make sure you have writing permission)(default: ' + proposed_path + '):') or proposed_path
+    if os.path.exists(os.getenv("HOME") + "/.qgis2/processing/scripts/"):
+        qgis_processing_path = os.getenv("HOME") + "/.qgis2/processing/scripts/"
+        print("QGis processing path: " + qgis_processing_path)
+    # The 'malte' Option is not needed. "HOME" should work fine...
+    else:
+        qgis_processing_path = input("No QGis processing path found! Provide QGis-Processing Path:")
+    
     
     host = input('host (default 192.168.0.46):') or '192.168.0.46'
     port = input('port (default 5432):') or '5432'
