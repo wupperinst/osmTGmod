@@ -1110,7 +1110,9 @@ FOR v_line IN
 		cables_array,
 		wires_array, 
 		frequency_array,
-		length
+		length,
+		startpoint,
+		endpoint
 		FROM power_line
 LOOP
 	FOR i IN 1..v_line.numb_volt_lev LOOP
@@ -1122,7 +1124,9 @@ LOOP
 						cables,
 						wires,
 						frequency,
-						power)
+						power,
+						startpoint,
+						endpoint)
 			SELECT 	0,  -- Es wird Relation_id = 0 vergeben
 				v_line.id,
 				v_line.length,
@@ -1131,7 +1135,9 @@ LOOP
 				v_line.cables_array [i],
 				v_line.wires_array [i],
 				v_line.frequency_array [i],
-				v_line.power;
+				v_line.power,
+				v_line.startpoint,
+				v_line.endpoint;
 	END LOOP;
 				
 END LOOP;	
@@ -1196,7 +1202,8 @@ LOOP
 			WHERE 	main.relation_id = '|| v_params.id ||' 
 				AND main.voltage = '|| v_params.voltage ||'
 				AND main.frequency = '|| v_params.frequency;
-	
+
+	-- pgr_createTopology should not be used.
 	PERFORM pgr_createTopology (	'branch_data_topo', --source und target werden immer wieder auf NULL gesetzt und Topologie neu berechnet.
 					0.0005, -- Is this a good buffer?
 					'way', 
@@ -1241,7 +1248,8 @@ LOOP
 		UPDATE branch_data_topo_vertices_pgr 
 			SET 	voltage = v_params.voltage,
 				frequency = v_params.frequency;
-
+				
+		-- Komplette, geupdatete Tabelle wird in bus_data geschrieben...
 		INSERT INTO bus_data (id, the_geom, voltage, frequency)
 			SELECT id, the_geom, voltage, frequency
 			FROM branch_data_topo_vertices_pgr;
@@ -1395,6 +1403,56 @@ $$
 LANGUAGE plpgsql;
 
 
+	-- otg_connect_dead_ends_to_cont_lines
+
+-- This function connects dead ends that are close to a transmission line...
+-- to one of the transmission line vertices. 
+-- Until now this is quick and dirty and needs to be improved.	
+CREATE OR REPLACE FUNCTION otg_connect_dead_ends_to_cont_lines () RETURNS void
+AS $$
+DECLARE
+v_bus RECORD;
+v_hit_line RECORD;
+v_max_line_id BIGINT;
+v_associated_line BIGINT;
+BEGIN
+v_max_line_id := (SELECT max(line_id) FROM power_line_sep);
+FOR v_bus IN	
+	SELECT id, the_geom, voltage, frequency 
+		FROM bus_data WHERE 	origin = 'lin' AND
+					cntr_id = 'DE' AND
+					substation_id IS NULL AND
+					cnt = 1 AND 
+					voltage = 110000 -- unitl now only for 110kV
+LOOP
+
+	-- Hit another line with this bus + buffer
+	SELECT f_bus, t_bus 
+				INTO v_hit_line 
+				FROM power_line_sep 
+				WHERE 	NOT f_bus = v_bus.id AND
+					NOT t_bus = v_bus.id AND -- Must not find itself
+					voltage = v_bus.voltage AND
+					frequency = v_bus.frequency AND
+					ST_intersects(way, ST_Buffer(v_bus.the_geom, 0.0005)) -- Same buffer as in CreateTopology
+					LIMIT 1; -- Include ORDER BY!!
+
+	CONTINUE WHEN v_hit_line IS NULL;
+
+	-- transmission lines with dead ends get... 
+	-- a new connection (with one of hit_line's bus)
+	-- This should be improved (distances, choice of bus etc....)
+	UPDATE power_line_sep SET f_bus = v_hit_line.f_bus 
+				WHERE f_bus = v_bus.id;
+	UPDATE power_line_sep SET t_bus = v_hit_line.t_bus
+				WHERE t_bus = v_bus.id;
+				
+END LOOP;	
+END
+$$
+LANGUAGE plpgsql;
+
+
 	-- otg_cut_off_dead_ends_iteration
 
 -- Diese Funktion löscht iterativ alle Knoten an welche nur eine Line angeschlossen ist.
@@ -1418,6 +1476,7 @@ BEGIN
 	SELECT count (*) INTO v_count FROM bus_data WHERE origin = v_origin AND cnt = 1 AND substation_id IS NULL;
 	EXIT WHEN v_count = 0; -- Abbrechen, wenn keine neuen 1er mehr gefunden werden.
 
+	-- Deletes all lines with endbus cnt=1
 	EXECUTE 'DELETE FROM '||v_table||' WHERE 	(f_bus IN (SELECT id FROM bus_data 
 								WHERE 	origin = '|| quote_literal(v_origin) ||' AND 
 									cnt = 1 AND 
@@ -3131,7 +3190,8 @@ DROP TABLE bus_data;
 	branch_voltage,
 	cables,
 	frequency,
-	geom)
+	geom,
+	topo)
 
 	SELECT   	v_new_id,
 			branch_id,
@@ -3153,7 +3213,13 @@ DROP TABLE bus_data;
 			voltage,
 			cables,
 			frequency,
-			multiline as geom       -- Line Geometry (Not simplified) WGS84
+			multiline as geom,       -- Line Geometry (Not simplified) WGS84
+			ST_MakeLine(
+			(SELECT the_geom FROM bus_data 	
+					WHERE bus_i = f_bus),
+			(SELECT the_geom FROM bus_data 	
+					WHERE bus_i = t_bus)) -- Topo
+					
 				FROM branch_data;
 DROP TABLE branch_data;  
 
@@ -3172,7 +3238,8 @@ INSERT INTO results.dcline_data(
 	branch_voltage,
 	cables,
 	frequency,
-	geom)
+	geom,
+	topo)
 	
 	SELECT   	v_new_id,
 			branch_id,
@@ -3194,7 +3261,12 @@ INSERT INTO results.dcline_data(
 			voltage,
 			cables,
 			frequency,
-			multiline as geom       -- Line Geometry (Not simplified) WGS84
+			multiline as geom,       -- Line Geometry (Not simplified) WGS84
+			ST_MakeLine(
+			(SELECT the_geom FROM bus_data 	
+					WHERE bus_i = f_bus),
+			(SELECT the_geom FROM bus_data 	
+					WHERE bus_i = t_bus)) -- Topo
 
 				FROM dcline_data;
 DROP TABLE dcline_data;  

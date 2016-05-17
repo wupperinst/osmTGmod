@@ -102,7 +102,8 @@ CREATE TABLE IF NOT EXISTS results.branch_data(
                 branch_voltage INT, --Branch voltage
                 cables INT,
                 frequency NUMERIC, 
-                geom geometry(MultiLineString, 4326));     -- Line Geometry (Not simplified) WGS84
+                geom geometry (MultiLineString, 4326),-- Line Geometry (Not simplified) WGS84
+                topo geometry (LineString, 4326));     -- Line Geometry (simplified) WGS84
 
 ALTER TABLE results.branch_data DROP CONSTRAINT IF EXISTS result_fk;		
 ALTER TABLE results.branch_data 
@@ -144,7 +145,8 @@ CREATE TABLE IF NOT EXISTS results.dcline_data (
                branch_voltage INT, --Branch voltage
                cables INT,
                frequency NUMERIC, 
-               geom geometry (MultiLineString, 4326));    -- Line Geometry (Not simplified) WGS84
+               geom geometry (MultiLineString, 4326), -- Line Geometry (Not simplified) WGS84
+               topo geometry (LineString, 4326));    
 
 ALTER TABLE results.dcline_data DROP CONSTRAINT IF EXISTS result_fk;		
 ALTER TABLE results.dcline_data 

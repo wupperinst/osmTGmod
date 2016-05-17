@@ -1,4 +1,4 @@
------------------------------------------------------------------------------------
+﻿-----------------------------------------------------------------------------------
 --
 --  Copyright "2015" "Wuppertal Institut"
 --
@@ -22,8 +22,6 @@
 
 -- Konvention:
 -- Alle Werte von Variablen sind in üblichen S.I. Einheiten, falls im Variablenname keine (abweichende) Einheit angegeben ist.
-
--- Malte 17.05.2016
 
 -- DROP TABELLEN
 
@@ -770,10 +768,14 @@ SELECT otg_substract_cables_within_buffer (id) FROM bus_data WHERE buffered = tr
 	
 CREATE TABLE power_line_sep AS SELECT * FROM branch_data LIMIT 0; 
 -- Aufgetrennte power_lines werden in power_line_sep geschrieben
--- Lines bekommen Relation_id = 0			
+-- Lines bekommen Relation_id = 0
+
+-- These columns are still needed for separation of continuous lines	
+ALTER TABLE power_line_sep ADD COLUMN startpoint geometry (Point);
+ALTER TABLE power_line_sep ADD COLUMN endpoint geometry (Point); 
+	
 SELECT otg_seperate_voltage_levels ();
 --DROP TABLE power_line;
-
 
 	-- LÖSCHUNGEN
 	
@@ -865,6 +867,7 @@ UPDATE power_line_sep
 	-- TOPOLOGIE
 	-- (Hier werden die Topologien der Spannungsebenen berechnet)
 
+
 -- Knoteninformationen werde wieder in Tabelle bus_data geschrieben
 -- An dieser Stelle sollte evtl. noch nach Frequenzen getrennt werden (damit sich übernander liegende HGÜ und Drehstromleitung nicht verbinden können)
 -- (dies ist kein Problem, solange Circuits gut gemappt sind)
@@ -878,6 +881,10 @@ SELECT otg_set_count ('power_line_sep', 'lin');
 -- S.o. (bei power_circuits) - Analyse der neuen Knoten
 SELECT otg_bus_analysis ('lin');
 
+-- This function connects dead ends that are close to a transmission line...
+-- to one of the transmission line vertices. 
+-- Until now this is quick and dirty and needs to be improved.
+SELECT otg_connect_dead_ends_to_cont_lines ();
 
 	-- PROBLEM: dead_end
 	-- (bei den noch überbleibendne power_lines werden diejenigen iterativ gelöscht, die ein offenes Ende haben)
@@ -931,9 +938,9 @@ INSERT INTO  branch_data (	relation_id,
 
 -- Die folgenden Tabellen werden nicht mehr benötigt
 -- (Alle für das Netzmodell benötigten Informationen wurden in branch_data und bus_data vereinigt)
-DROP TABLE power_circ_members;
-DROP TABLE power_circuits;
-DROP TABLE power_line_sep;
+--DROP TABLE power_circ_members;
+--DROP TABLE power_circuits;
+--DROP TABLE power_line_sep;
 -- Die Spalten buffered und origin sind nur für Prozessierung von Bedeutung und können gelöcscht werden
 ALTER TABLE bus_data DROP COLUMN buffered;
 ALTER TABLE bus_data DROP COLUMN origin;
