@@ -1,20 +1,20 @@
-﻿-----------------------------------------------------------------------------------
---                                                                                 
---  Copyright "2015" "Wuppertal Institut"                                         
---                                                                                
---  Licensed under the Apache License, Version 2.0 (the "License");               
---  you may not use this file except in compliance with the License.              
---  You may obtain a copy of the License at                                       
---                                                                                
---      http://www.apache.org/licenses/LICENSE-2.0                                
---                                                                                
---  Unless required by applicable law or agreed to in writing, software           
---  distributed under the License is distributed on an "AS IS" BASIS,             
---  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.      
---  See the License for the specific language governing permissions and           
---  limitations under the License.                                                
---                                                                                
------------------------------------------------------------------------------------ 
+-----------------------------------------------------------------------------------
+--
+--  Copyright "2015" "Wuppertal Institut"
+--
+--  Licensed under the Apache License, Version 2.0 (the "License");
+--  you may not use this file except in compliance with the License.
+--  You may obtain a copy of the License at
+--
+--      http://www.apache.org/licenses/LICENSE-2.0
+--
+--  Unless required by applicable law or agreed to in writing, software
+--  distributed under the License is distributed on an "AS IS" BASIS,
+--  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+--  See the License for the specific language governing permissions and
+--  limitations under the License.
+--
+-----------------------------------------------------------------------------------
 
 ------------------------------------------------------------------------------------------------
 -- POWER OSM DATENUMWANDLUNG
@@ -46,15 +46,15 @@ DROP TABLE IF EXISTS problem_log;
 
 -- ERSTELLUNG ALLGEMEINER TABELLEN (DEKLARIERUNG EINIGER VARIABLEN)
 
-	-- ERSTELLEN DER TABELLE BASE_MVA 
-	
---Basis der späteren p.u. Berechnungen	
+-- ERSTELLEN DER TABELLE BASE_MVA
+
+--Basis der späteren p.u. Berechnungen
 CREATE TABLE base_MVA (base_MVA INT);
 INSERT INTO base_MVA VALUES (100);
 
 
-	-- ERSTELLEN DER TABELLE MIN_VOLTAGE
-	
+-- ERSTELLEN DER TABELLE MIN_VOLTAGE
+
 -- Alle Spannungen, die mindestens so groß sind, wie min_voltage werden betrachtet
 -- (Macht es Sinn eine Mindesspannung zu verwenden?)
 -- Bei den Leitungskennwerten fehlen noch Werte für alle untersuchten Spannungen
@@ -62,9 +62,8 @@ CREATE TABLE min_voltage (voltage INT);
 --INSERT INTO min_voltage (voltage) VALUES (110000);
 INSERT INTO min_voltage (voltage) VALUES (220000);
 --INSERT INTO min_voltage (voltage) VALUES (380000);
-	
 
-	-- ERSTELLEN DER TOPOLOGIE-TABELLEN 
+	-- ERSTELLEN DER TOPOLOGIE-TABELLEN
 	-- (Diese werden später mit der topologischen Netzstruktur gefüllt)
 
 		-- BUS_DATA	

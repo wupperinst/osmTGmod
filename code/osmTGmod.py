@@ -17,25 +17,41 @@
 ###################################################################################
 
 # Grid_Model main Module
-#This is the 110kV test!
 
 
 # Imports Database Modules
+from __future__ import (absolute_import, division, print_function) #, unicode_literals)
+from builtins import * # This package seems to be unused
+
+#import unicodecsv
+#import io
+
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT as _il # Needed for creating Databases
+
 import subprocess
 import os
-import urllib
+
 import datetime
 import sys
+import stat
+import platform
 
+if (sys.version_info > (3, 0)):
+    # Python 3 import
+    import urllib.request
+else:
+    # Python 2 import
+    import urllib
+    from urllib2 import urlopen
+     
 #import shutil
 
 import general_funcs
 import build_up_db
 import qgis_processing
-#import qgis_projects
-
+import qgis_projects
+#import csv
 
 class grid_model:
 
@@ -56,14 +72,39 @@ class grid_model:
 
         self.standard_db = 'postgres'
         
-        self.home_dir = os.getenv("HOME")
-        self.osmosis_path = self.home_dir + "/src/osmosis/package/bin/osmosis" # Path should be specified in Installation section in Docu
-
+        self.platform = None # Platform specific variable
+        
+        
+        ## General Platform Check (Not needed)
+        if platform.system() == "Darwin": 
+            self.platform = 'mac' 
+            print("Detected platform: Darwin")
+        
+        elif platform.system() == "Linux" or platform.system() == "Linux2":
+            self.platform = 'lin'            
+            print("Detected platform: Linux")
+            
+        elif platform.system() == "Win32" or platform.system() == "win32":
+            self.platform = 'win'             
+            print("Detected platform: Windows")
+            
+        else:
+            print("Detected platform: None")
+   
+   
+        ## Osmosis Path and Activation
+        self.osmosis_path = os.getcwd() + '/osmosis/bin/osmosis' # The provided Osmosis Version is allways used
+        st = os.stat(self.osmosis_path) 
+        os.chmod(self.osmosis_path, st.st_mode | stat.S_IEXEC) # Set the osmosis file as executable
+   
+   
+        ## Setting osmTGmod folder structure: 
+        print("Checking/Creating file directories")
         self.raw_data_dir = os.path.dirname(os.getcwd()) + "/raw_data"
         self.result_dir = os.path.dirname(os.getcwd()) + "/results"
         self.qgis_projects_dir = os.path.dirname(os.getcwd()) + "/qgis_projects"
         
-        print("Checking/Creating file directories")
+        
         # Basic folders are created if not existent
         if not os.path.exists(self.raw_data_dir):
             os.makedirs(self.raw_data_dir)
@@ -74,6 +115,7 @@ class grid_model:
         if not os.path.exists(self.qgis_projects_dir):
             os.makedirs(self.qgis_projects_dir)
 
+        # Server connection:
         print ("Connecting to Server...")
 
         try:
@@ -198,9 +240,9 @@ class grid_model:
             # Writing Processing files
         qgis_processing.write_processing(qgis_processing_path)
 
-        # this is disabled, due to version problems in QGis
-        # print ("Writing QGis-poject files...")
-        # qgis_projects.write_projects(database, password, host, port, user)
+        # this can be disabled, due to version problems in QGis
+        print ("Writing QGis-poject files...")
+        qgis_projects.write_projects(database, password, host, port, user)
 
         print ("Grid Model is ready to use!")
 
@@ -208,11 +250,14 @@ class grid_model:
 
     # Function to download OSM-Data
     def download_osm_data(self, filename):
-        
-        urllib.request.urlretrieve("http://ftp5.gwdg.de/pub/misc/openstreetmap/download.geofabrik.de/germany-latest.osm.pbf", self.raw_data_dir + "/" + filename)
-#        osm_data = urllib.URLopener()
-#        # existing data is overwritten
-#        osm_data.retrieve("http://ftp5.gwdg.de/pub/misc/openstreetmap/download.geofabrik.de/germany-latest.osm.pbf", self.raw_data_dir + "/" + filename)
+        if (sys.version_info > (3, 0)):
+            # Python 3 import
+            urllib.request.urlretrieve("http://ftp5.gwdg.de/pub/misc/openstreetmap/download.geofabrik.de/germany-latest.osm.pbf", self.raw_data_dir + "/" + filename)
+        else:
+            # Python 2 import
+            osm_data = urllib.URLopener()
+            # existing data is overwritten
+            osm_data.retrieve("http://ftp5.gwdg.de/pub/misc/openstreetmap/download.geofabrik.de/germany-latest.osm.pbf", self.raw_data_dir + "/" + filename)
 
     # Function to filter OSM-Data
     def osmosis_filter(self, filename_raw, filename_filter):
@@ -333,7 +378,6 @@ class grid_model:
                 filename_filter = input("Name of filtered OSM-file:")
                 v_date = input("Download Date (E.g. 2015-10-23):")
 
-
                 self.osmosis_import(filename_filter, v_date)
 
                 not_valid = False
@@ -382,14 +426,15 @@ class grid_model:
             print ('writing %s...' % table)
 
             filename = path + str(result_id) + '_' + table + ".csv"
+
             query = 'SELECT * FROM results.%s WHERE result_id = %s' %(table, str(result_id))
 
             outputquery = "COPY ({0}) TO STDOUT WITH DELIMITER ',' CSV HEADER".format(query)
-
+            
             fh = open(filename,"w")
-
+ #           input("Press Enter to continue...")
             self.cur.copy_expert(outputquery, fh)
-
+                       
 
             fh.close()
 
@@ -488,9 +533,16 @@ if __name__ == '__main__':
     database = input('database name:')
     password = input('password:')
 
-    # QGis 2.8 uses this path!
-    proposed_path = "/home/malte/.qgis2/processing/scripts/"
-    qgis_processing_path = input('QGis-Processing Path (make sure you have writing permission)(default: ' + proposed_path + '):') or proposed_path
+
+    print("Checking QGis processing path...")
+    
+    if os.path.exists(os.getenv("HOME") + "/.qgis2/processing/scripts/"):
+        qgis_processing_path = os.getenv("HOME") + "/.qgis2/processing/scripts/"
+        print("QGis processing path: " + qgis_processing_path)
+    # The 'malte' Option is not needed. "HOME" should work fine...
+    else:
+        qgis_processing_path = input("No QGis processing path found! Provide QGis-Processing Path:")
+    
     
     host = input('host (default 192.168.0.46):') or '192.168.0.46'
     port = input('port (default 5432):') or '5432'
