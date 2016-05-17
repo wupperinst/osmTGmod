@@ -23,6 +23,8 @@
 -- Konvention:
 -- Alle Werte von Variablen sind in üblichen S.I. Einheiten, falls im Variablenname keine (abweichende) Einheit angegeben ist.
 
+-- Malte 17.05.2016
+
 -- DROP TABELLEN
 
 DROP TABLE IF EXISTS power_circ_members;
