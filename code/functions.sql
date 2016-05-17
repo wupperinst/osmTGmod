@@ -3171,8 +3171,7 @@ INSERT INTO results.bus_data (
 			frequency,
 			the_geom as geom,        -- Point Geometry (Not simplified) WGS84
 			(SELECT name FROM power_substation WHERE power_substation.id = substation_id LIMIT 1) as osm_name
-				FROM bus_data;
-DROP TABLE bus_data;             
+				FROM bus_data;            
 
  INSERT INTO results.branch_data(
 	result_id,
@@ -3221,7 +3220,7 @@ DROP TABLE bus_data;
 					WHERE bus_i = t_bus)) -- Topo
 					
 				FROM branch_data;
-DROP TABLE branch_data;  
+ 
 
 INSERT INTO results.dcline_data(
 	result_id,
@@ -3269,8 +3268,10 @@ INSERT INTO results.dcline_data(
 					WHERE bus_i = t_bus)) -- Topo
 
 				FROM dcline_data;
-DROP TABLE dcline_data;  
 
+DROP TABLE bus_data;
+DROP TABLE branch_data; 
+DROP TABLE dcline_data;  
 
 INSERT INTO results.nuts3_subst (
 	result_id,
