@@ -429,7 +429,7 @@ class grid_model:
 
             query = 'SELECT * FROM results.%s WHERE result_id = %s' %(table, str(result_id))
 
-            outputquery = "COPY ({0}) TO STDOUT WITH DELIMITER ',' CSV HEADER".format(query)
+            outputquery = "COPY ({0}) TO STDOUT WITH DELIMITER ',' CSV HEADER".format(query).encode('utf-8')
             
             fh = open(filename,"w")
  #           input("Press Enter to continue...")

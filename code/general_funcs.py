@@ -24,7 +24,7 @@ def execute_sql (conn, cur, filepath):
     # Can't remember why one has to use utf-8-sig
     fd = codecs.open(filepath, 'r', "utf-8-sig")
     
-    sqlfile = fd.read()
+    sqlfile = fd.read() #.decode("utf-8-sig").encode("utf-8")
     
     fd.close()
 
