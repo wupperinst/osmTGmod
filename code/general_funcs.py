@@ -32,7 +32,7 @@ def execute_sql (conn, cur, filepath):
 
     fd.close()
 
-print ('Executing SQL-file %s...' %filepath)
+    print ('Executing SQL-file %s...' %filepath)
     cur.execute(sqlfile)
     conn.commit()
     

@@ -443,8 +443,12 @@ class grid_model:
             query = 'SELECT * FROM results.%s WHERE result_id = %s' %(table, str(result_id))
 
             outputquery = "COPY ({0}) TO STDOUT WITH DELIMITER ',' CSV HEADER".format(query)
-            
-            fh = open(filename,"w")
+
+            if (sys.version_info > (3, 0)): 
+                fh = open(filename, encoding='utf-8', mode = "w")
+            else:
+                fh = open(filename, "w")
+
 
             self.cur.copy_expert(outputquery, fh)
                        
