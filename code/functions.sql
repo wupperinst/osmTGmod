@@ -3239,3 +3239,108 @@ DROP TABLE problem_log;
 END;
 $$
 LANGUAGE plpgsql;
+
+-- OTG_split_table () Teilt eine Tabelle v_table in 10 Einzeltabellen auf. Dabei ist die in v_parameter spezifizierte Spalte das Unterscheidungsmerkmal. Die Ursprüngliche Tabelle wird nach der Aufteilung gelöscht.
+
+CREATE OR REPLACE FUNCTION otg_split_table (v_table TEXT, v_parameter TEXT) RETURNS void
+AS $$
+
+DECLARE
+number_of_rows INT;
+part_end_1 INT;
+part_end_2 INT;
+part_end_3 INT;
+part_end_4 INT;
+part_end_5 INT;
+part_end_6 INT;
+part_end_7 INT;
+part_end_8 INT;
+part_end_9 INT;
+
+BEGIN
+
+-- Eine Hilfstabelle, in welcher die Rheinfolge der 10 Einzeltabellen bestimmt wird wird erstellt.
+EXECUTE 'CREATE TABLE table_order AS
+SELECT DISTINCT ' || v_parameter || ' FROM ' || v_table ||'
+ORDER BY ' || v_parameter;
+ALTER TABLE table_order ADD COLUMN indx serial NOT NULL PRIMARY KEY;
+
+number_of_rows := (SELECT COUNT (*)
+FROM table_order);
+
+part_end_1 := (SELECT indx FROM table_order WHERE (SELECT FLOOR (number_of_rows/10)) = indx);
+EXECUTE 'CREATE TABLE split_table_1 AS
+SELECT *
+FROM '|| v_table ||'
+WHERE '|| v_parameter ||' <= (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_1 ||')
+ORDER BY '|| v_parameter;
+
+part_end_2 := (SELECT indx FROM table_order WHERE (SELECT FLOOR (2*number_of_rows/10)) = indx);
+EXECUTE 'CREATE TABLE split_table_2 AS
+SELECT *
+FROM '|| v_table ||'
+WHERE '|| v_parameter ||' > (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_1 ||') AND '|| v_parameter ||' <= (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_2 ||')
+ORDER BY '|| v_parameter;
+
+part_end_3 := (SELECT indx FROM table_order WHERE (SELECT FLOOR (3*number_of_rows/10)) = indx);
+EXECUTE 'CREATE TABLE split_table_3 AS
+SELECT *
+FROM '|| v_table ||'
+WHERE '|| v_parameter ||' > (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_2 ||') AND '|| v_parameter ||' <= (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_3 ||')
+ORDER BY '|| v_parameter;
+
+part_end_4 := (SELECT indx FROM table_order WHERE (SELECT FLOOR (4*number_of_rows/10)) = indx);
+EXECUTE 'CREATE TABLE split_table_4 AS
+SELECT *
+FROM '|| v_table ||'
+WHERE '|| v_parameter ||' > (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_3 ||') AND '|| v_parameter ||' <= (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_4 ||')
+ORDER BY '|| v_parameter;
+
+part_end_5 := (SELECT indx FROM table_order WHERE (SELECT FLOOR (5*number_of_rows/10)) = indx);
+EXECUTE 'CREATE TABLE split_table_5 AS
+SELECT *
+FROM '|| v_table ||'
+WHERE '|| v_parameter ||' > (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_4 ||') AND '|| v_parameter ||' <= (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_5 ||')
+ORDER BY '|| v_parameter;
+
+part_end_6 := (SELECT indx FROM table_order WHERE (SELECT FLOOR (6*number_of_rows/10)) = indx);
+EXECUTE 'CREATE TABLE split_table_6 AS
+SELECT *
+FROM '|| v_table ||'
+WHERE '|| v_parameter ||' > (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_5 ||') AND '|| v_parameter ||' <= (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_6 ||')
+ORDER BY '|| v_parameter;
+
+part_end_7 := (SELECT indx FROM table_order WHERE (SELECT FLOOR (7*number_of_rows/10)) = indx);
+EXECUTE 'CREATE TABLE split_table_7 AS
+SELECT *
+FROM '|| v_table ||'
+WHERE '|| v_parameter ||' > (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_6 ||') AND '|| v_parameter ||' <= (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_7 ||')
+ORDER BY '|| v_parameter;
+
+part_end_8 := (SELECT indx FROM table_order WHERE (SELECT FLOOR (8*number_of_rows/10)) = indx);
+EXECUTE 'CREATE TABLE split_table_8 AS
+SELECT *
+FROM '|| v_table ||'
+WHERE '|| v_parameter ||' > (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_7 ||') AND '|| v_parameter ||' <= (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_8 ||')
+ORDER BY '|| v_parameter;
+
+part_end_9 := (SELECT indx FROM table_order WHERE (SELECT FLOOR (9*number_of_rows/10)) = indx);
+EXECUTE 'CREATE TABLE split_table_9 AS
+SELECT *
+FROM '|| v_table ||'
+WHERE '|| v_parameter ||' > (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_8 ||') AND '|| v_parameter ||' <= (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_9 ||')
+ORDER BY '|| v_parameter;
+
+EXECUTE 'CREATE TABLE split_table_10 AS
+SELECT *
+FROM '|| v_table ||'
+WHERE '|| v_parameter ||' > (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_9 ||')
+ORDER BY '|| v_parameter;
+
+DROP TABLE table_order;
+-- Löschung der Ursprünglichen Tabelle um Doppelungen zu vermeiden.
+EXECUTE 'DROP TABLE '|| v_table;
+
+END
+$$
+LANGUAGE plpgsql;

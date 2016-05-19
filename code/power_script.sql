@@ -592,7 +592,44 @@ ALTER TABLE power_circ_members ADD COLUMN t_bus BIGINT;
 -- Dabei werden alle circuits zunächst einzeln durchgegangen und deren Topologie wird unabhängig berechnet
 -- Vertices werden in die Tabelle bus_data geschrieben...
 -- Die Sortierung anch Spannung und Frequenz ist an dieser Stelle irelevant, da ohnehin Realtions-weise gerechnet wird.
-SELECT otg_create_grid_topology ('power_circ_members');
+-- Aufteilen der Tabelle 'power_circ_members' um DB-Servern mit wenig RAM oder wenigen max_locks_per transaction die Berechnung zu ermöglichen.
+
+SELECT otg_split_table('power_circ_members', 'relation_id');
+
+SELECT otg_create_grid_topology ('split_table_1');
+SELECT otg_create_grid_topology ('split_table_2');
+SELECT otg_create_grid_topology ('split_table_3');
+SELECT otg_create_grid_topology ('split_table_4');
+SELECT otg_create_grid_topology ('split_table_5');
+SELECT otg_create_grid_topology ('split_table_6');
+SELECT otg_create_grid_topology ('split_table_7');
+SELECT otg_create_grid_topology ('split_table_8');
+SELECT otg_create_grid_topology ('split_table_9');
+SELECT otg_create_grid_topology ('split_table_10');
+
+-- Nach der Berechnung wird die Tabelle wieder zusammengefügt
+ALTER TABLE split_table_1 RENAME TO power_circ_members;
+INSERT INTO power_circ_members SELECT * FROM split_table_2;
+INSERT INTO power_circ_members SELECT * FROM split_table_3;
+INSERT INTO power_circ_members SELECT * FROM split_table_4;
+INSERT INTO power_circ_members SELECT * FROM split_table_5;
+INSERT INTO power_circ_members SELECT * FROM split_table_6;
+INSERT INTO power_circ_members SELECT * FROM split_table_7;
+INSERT INTO power_circ_members SELECT * FROM split_table_8;
+INSERT INTO power_circ_members SELECT * FROM split_table_9;
+INSERT INTO power_circ_members SELECT * FROM split_table_10;
+
+-- Und die nicht benötigten Tabellen werden wieder gelöscht
+DROP TABLE IF EXISTS split_table_1;
+DROP TABLE IF EXISTS split_table_2;
+DROP TABLE IF EXISTS split_table_3;
+DROP TABLE IF EXISTS split_table_4;
+DROP TABLE IF EXISTS split_table_5;
+DROP TABLE IF EXISTS split_table_6;
+DROP TABLE IF EXISTS split_table_7;
+DROP TABLE IF EXISTS split_table_8;
+DROP TABLE IF EXISTS split_table_9;
+DROP TABLE IF EXISTS split_table_10;
 
 -- Neue Spalte origin in Tabelle bus_data soll kennzeichnen, das die bis jetzt in bus_data eingetragenen Knoten aus den Stromkreisinformationen stammen (origin = 'rel')
 -- Die Knoten aus den (überbleibenden) power_lines wird auch in diese Knotentabelle gespeichert (origin = 'lin')
