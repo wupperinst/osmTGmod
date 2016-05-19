@@ -18,29 +18,33 @@
 ###################################################################################
 
 import codecs # Necessary in Python 3 (no standard String encoding)
+import sys
 
 # Function to execute entire SQL file
 def execute_sql (conn, cur, filepath):
     # Can't remember why one has to use utf-8-sig
-    fd = codecs.open(filepath, 'r', "utf-8-sig")
-    
-    sqlfile = fd.read()
-    
+    if (sys.version_info > (3, 0)):
+        fd = codecs.open(filepath, 'r', "utf-8-sig")
+        sqlfile = fd.read()
+    else:
+        fd = open(filepath, 'r')
+        sqlfile = fd.read().decode("utf-8-sig").encode("utf-8")
+
     fd.close()
 
     print ('Executing SQL-file %s...' %filepath)
     cur.execute(sqlfile)
     conn.commit()
-
+    
     print ('SQL-file %s executed!' %filepath)
 
 
 # Yes-No function
 def ask_yes_no(choice):
-
+    
     yes = set(['yes','y', 'ye', '']) # Enter means yes!
     no = set(['no','n'])
-
+    
     while True:
         if choice in yes:
             return True

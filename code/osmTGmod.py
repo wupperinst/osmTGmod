@@ -20,17 +20,15 @@
 
 
 # Imports Database Modules
-from __future__ import (absolute_import, division, print_function) #, unicode_literals)
-from builtins import * # This package seems to be unused
 
-#import unicodecsv
-#import io
+from builtins import input
 
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT as _il # Needed for creating Databases
 
 import subprocess
 import os
+import io
 
 import datetime
 import sys
@@ -51,7 +49,6 @@ import general_funcs
 import build_up_db
 import qgis_processing
 import qgis_projects
-#import csv
 
 class grid_model:
 
@@ -233,7 +230,14 @@ class grid_model:
             # Writing conn-File
         print ("Writing QGis-processing files...")
         conn_str = """host=%s port=%s user=%s dbname=%s password=%s""" %(self.host,self.port,self.user,self.database,self.password)
-        fh = open(qgis_processing_path + "conn.txt","w")
+
+        if (sys.version_info > (3, 0)):
+            # Python 3 open
+            fh = open(qgis_processing_path + "conn.txt","w")
+        else:
+            # Python 2 io.open to process data as binary, not as str
+            fh = io.open(qgis_processing_path + "conn.txt","wb")
+        
         fh.write(conn_str)
         fh.close()
 
@@ -249,14 +253,14 @@ class grid_model:
 
 
     # Function to download OSM-Data
+    # existing data is overwritten
     def download_osm_data(self, filename):
         if (sys.version_info > (3, 0)):
-            # Python 3 import
+            # Python 3 download
             urllib.request.urlretrieve("http://ftp5.gwdg.de/pub/misc/openstreetmap/download.geofabrik.de/germany-latest.osm.pbf", self.raw_data_dir + "/" + filename)
         else:
-            # Python 2 import
+            # Python 2 download
             osm_data = urllib.URLopener()
-            # existing data is overwritten
             osm_data.retrieve("http://ftp5.gwdg.de/pub/misc/openstreetmap/download.geofabrik.de/germany-latest.osm.pbf", self.raw_data_dir + "/" + filename)
 
     # Function to filter OSM-Data
@@ -430,9 +434,13 @@ class grid_model:
             query = 'SELECT * FROM results.%s WHERE result_id = %s' %(table, str(result_id))
 
             outputquery = "COPY ({0}) TO STDOUT WITH DELIMITER ',' CSV HEADER".format(query)
-            
-            fh = open(filename,"w")
- #           input("Press Enter to continue...")
+
+            if (sys.version_info > (3, 0)): 
+                fh = open(filename, encoding='utf-8', mode = "w")
+            else:
+                fh = open(filename, "w")
+
+
             self.cur.copy_expert(outputquery, fh)
                        
 
