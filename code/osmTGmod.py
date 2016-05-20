@@ -21,14 +21,11 @@
 
 # Imports Database Modules
 
-from builtins import input
-
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT as _il # Needed for creating Databases
 
 import subprocess
 import os
-import io
 
 import datetime
 import sys
@@ -36,13 +33,19 @@ import stat
 import platform
 
 if (sys.version_info > (3, 0)):
-    # Python 3 import
+    # Python 3 only import
     import urllib.request
 else:
-    # Python 2 import
+    # Python 2 only import
     import urllib
     from urllib2 import urlopen
-     
+    try:
+        from  builtins import input #First check if future module has been installed
+    except ImportError:
+        if hasattr(__builtins__, 'raw_input'):
+            input=raw_input
+    import io
+    
 #import shutil
 
 import general_funcs
