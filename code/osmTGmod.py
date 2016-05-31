@@ -38,6 +38,7 @@ else:
     # Python 2 only import
     import urllib
     from urllib2 import urlopen
+
     try:
         from  builtins import input #First check if future module has been installed
     except ImportError:
