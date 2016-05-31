@@ -33,10 +33,6 @@ DROP TABLE IF EXISTS power_substation;
 
 DROP TABLE IF EXISTS power_line_sep;
 
-DROP TABLE IF EXISTS base_MVA;
-DROP TABLE IF EXISTS voltage_levels;
-DROP TABLE IF EXISTS min_voltage;
-
 DROP TABLE IF EXISTS branch_data;
 DROP TABLE IF EXISTS bus_data;
 DROP TABLE IF EXISTS dcline_data;
@@ -52,22 +48,6 @@ DELETE FROM debug_vals;
 
 -- ERSTELLUNG ALLGEMEINER TABELLEN (DEKLARIERUNG EINIGER VARIABLEN)
 
--- ERSTELLEN DER TABELLE BASE_MVA
-
---Basis der späteren p.u. Berechnungen
-CREATE TABLE base_MVA (base_MVA INT);
-INSERT INTO base_MVA VALUES (100);
-
-
--- ERSTELLEN DER TABELLE MIN_VOLTAGE
-
--- Alle Spannungen, die mindestens so groß sind, wie min_voltage werden betrachtet
--- (Macht es Sinn eine Mindesspannung zu verwenden?)
--- Bei den Leitungskennwerten fehlen noch Werte für alle untersuchten Spannungen
-CREATE TABLE min_voltage (voltage INT);
-INSERT INTO min_voltage (voltage) VALUES (110000);
---INSERT INTO min_voltage (voltage) VALUES (220000);
---INSERT INTO min_voltage (voltage) VALUES (380000);
 
 	-- ERSTELLEN DER TOPOLOGIE-TABELLEN
 	-- (Diese werden später mit der topologischen Netzstruktur gefüllt)
@@ -461,7 +441,9 @@ DELETE FROM power_circ_members mem
 -- Löscht alle power_circ_members, deren Spannung unter min_volt liegt.
 -- (Bei den Subtraktionen (der Stromkreise von den Leitungen) werden die nicht untersuchten Spannugsebenen nicht benötigt)
 DELETE FROM power_circuits
-	WHERE voltage < (SELECT voltage FROM min_voltage); --NOT IN (SELECT voltage FROM voltage_levels);
+	WHERE voltage < (SELECT val_int 
+				FROM abstr_values 
+				WHERE val_description = 'min_voltage');
 
 		-- ANNAHME (frequency): 
 		-- Alle Stromkreise, die keinen Frequenzwert haben (und 220kv oder 380kv), bekommen frequency = 50
@@ -604,6 +586,8 @@ ALTER TABLE power_circ_members ADD COLUMN t_bus BIGINT;
 -- Die Sortierung anch Spannung und Frequenz ist an dieser Stelle irelevant, da ohnehin Realtions-weise gerechnet wird.
 -- Aufteilen der Tabelle 'power_circ_members' um DB-Servern mit wenig RAM oder wenigen max_locks_per transaction die Berechnung zu ermöglichen.
 
+-- The Split does good things, but is not beautiful!
+-- Nessesary for memory reasons
 SELECT otg_split_table('power_circ_members', 'relation_id');
 
 SELECT otg_create_grid_topology ('split_table_1');
@@ -756,7 +740,9 @@ SELECT otg_substract_cables_within_buffer (id) FROM bus_data WHERE buffered = tr
 					
 		SELECT 'power_line', ARRAY [id], NULL, ST_Multi(way), NULL, NULL, NULL, NULL, 'cable_conflict'
 		FROM power_line
-		WHERE otg_check_cable_conflict (id) AND voltage_array [1]>= (SELECT voltage FROM min_voltage);
+		WHERE otg_check_cable_conflict (id) AND voltage_array [1]>= (SELECT val_int 
+										FROM abstr_values 
+										WHERE val_description = 'min_voltage');
 
 
 
@@ -781,7 +767,9 @@ SELECT otg_seperate_voltage_levels ();
 	
 -- Es werden branches gelöscht, deren Spannung nicht Untersucht werden soll
 DELETE FROM power_line_sep 
-	WHERE 	voltage < (SELECT voltage FROM min_voltage); --NOT IN (SELECT voltage FROM voltage_levels); 
+	WHERE 	voltage < (SELECT val_int 
+				FROM abstr_values 
+				WHERE val_description = 'min_voltage'); --NOT IN (SELECT voltage FROM voltage_levels); 
 	
 		-- PROBLEM: Missing Cables
 		-- (Es werden diejenigen power_line_sep gelöscht, die cables IS NULL aufweisen)
@@ -1023,24 +1011,13 @@ UPDATE branch_data
 	SET multiline = ST_Multi(ST_union(ways));
 ALTER TABLE branch_data DROP column ways; 
 
+
 -- GRAPHEN UNTERSUCHUNG (CLUSTER)
 
 -- Neue Spalte discovered, in der true steht, wenn der Knoten zum Slack-Knoten Graph gehört (Zusammenhang)
 ALTER TABLE bus_data ADD COLUMN discovered BOOLEAN DEFAULT false;
 
--- Evtl. vorher untersuchen
--- Untersucht den Graph auf Zusammenhang (beginnt beim Slack-knoten)
---SELECT otg_graph_dfs ((SELECT id FROM bus_data 
---			WHERE substation_id = (SELECT main_station_id FROM main_station)
---			LIMIT 1));
-
--- This is now disabled!
--- -- What about this deletion? Can't it be done later (on specific demand)
--- -- Es werden die Branches und Busses gelöscht, die zu abgetrennten Netzbereichen gehören.
--- -- Diese werde zur Zeit nicht ins Problem-Log aufgenommen
--- DELETE FROM branch_data WHERE 	f_bus IN (SELECT id FROM bus_data WHERE discovered = false) OR
--- 				t_bus IN (SELECT id FROM bus_data WHERE discovered = false);
--- DELETE FROM bus_data WHERE discovered = false;
+SELECT otg_graph_analysis (); -- If in Python Input graph_dfs is selected True, then disconnected graphs will be deleted
 
 -- Erweitert branch_data um einfache Topologische Geometrie
 ALTER TABLE branch_data ADD COLUMN simple_geom GEOMETRY (LINESTRING, 4326);
@@ -1137,8 +1114,9 @@ UPDATE bus_data
 	SET bus_type = 3 
 	WHERE id = (SELECT id
 			FROM bus_data 
-			WHERE substation_id = (SELECT main_station_id 
-						FROM main_station)
+			WHERE substation_id = (SELECT val_int 
+						FROM abstr_values 
+						WHERE val_description = 'main_station')
 			ORDER BY voltage DESC
 			LIMIT 1);
 	

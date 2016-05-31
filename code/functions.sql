@@ -1017,7 +1017,9 @@ AS $$
 DECLARE
 v_min_voltage INT;
 BEGIN
-v_min_voltage := (SELECT voltage FROM min_voltage);
+v_min_voltage := (SELECT val_int 
+				FROM abstr_values 
+				WHERE val_description = 'min_voltage');
 
 UPDATE branch_data
 	SET 	wires = 4 -- 4 als Srandard für 380kv	
@@ -1891,6 +1893,33 @@ $$
 LANGUAGE plpgsql;
 
 
+	-- otg_graph_analysis ()
+
+-- Checks if graph_dfs is selected true. Then deletes disconnected Graphs
+CREATE OR REPLACE FUNCTION otg_graph_analysis () RETURNS void
+AS $$ 
+BEGIN
+IF (SELECT val_bool 
+	FROM abstr_values
+	WHERE val_description = 'graph_dfs') -- Only if graph_dfs is selected True (Python Script)
+	THEN
+	
+-- Evtl. vorher untersuchen
+-- Untersucht den Graph auf Zusammenhang (beginnt beim Slack-knoten)
+	PERFORM otg_graph_dfs ((SELECT id FROM bus_data 
+			WHERE substation_id = (SELECT val_int FROM abstr_values WHERE val_description = 'main_station')
+			LIMIT 1));
+
+-- Es werden die Branches und Busses gelöscht, die zu abgetrennten Netzbereichen gehören.
+-- Diese werde zur Zeit nicht ins Problem-Log aufgenommen
+	DELETE FROM branch_data WHERE 	f_bus IN (SELECT id FROM bus_data WHERE discovered = false) OR
+					t_bus IN (SELECT id FROM bus_data WHERE discovered = false);
+	DELETE FROM bus_data WHERE discovered = false;
+END IF;
+END
+$$
+LANGUAGE plpgsql;
+
 
 -- FUNKTIONEN ZUR BERECHNUNG DER LEITUNGS/TRAFO SPEZIFIKATIONEN
 
@@ -1921,7 +1950,11 @@ FOR v_branch IN
 		-- Bei 50 Hz. stellen 3 Leiterseile ein System dar.
 		v_numb_syst := round(v_branch.cables::REAL / 3); 
 		
-		v_Z_base := (SELECT voltage::REAL FROM bus_data WHERE id = v_branch.t_bus)^2 / (SELECT base_MVA*10^6 FROM base_MVA); --Basiswiderstand in Ohm
+		v_Z_base := (SELECT voltage::REAL 
+				FROM bus_data 
+				WHERE id = v_branch.t_bus)^2 / (SELECT val_int * 10^6 
+									FROM abstr_values 
+									WHERE val_description = 'base_MVA'); --Basiswiderstand in Ohm
 
 		-- Gesamter Ohmscher Widerstand und Induktiver Widerstand
 		-- Da die (mehreren) Systeme identisch sind, können Ohmscher und Induktiver Widerstand
@@ -2085,7 +2118,9 @@ FOR v_branch IN
 
 		v_X_TOS_all := -1/v_Bl_TOS_all;
 		
-		v_Z_base := v_u_OS^2 / (SELECT base_MVA * 10^6 FROM base_MVA); -- Basiswiderstand in Ohm (Oberspannungsseite)
+		v_Z_base := v_u_OS^2 / (SELECT val_int * 10^6 
+						FROM abstr_values 
+						WHERE val_description = 'base_MVA'); -- Basiswiderstand in Ohm (Oberspannungsseite)
 
 		UPDATE branch_data
 			SET	br_r = 0,

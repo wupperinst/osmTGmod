@@ -221,11 +221,33 @@ ALTER TABLE results.problem_log
 CREATE OR REPLACE VIEW results.view_problem_log AS 
 	SELECT * FROM results.problem_log
 	WHERE result_id = (SELECT result_id FROM results.view_results);
-
 	
-DROP TABLE IF EXISTS main_station;
-CREATE TABLE main_station (main_station_id BIGINT);
-INSERT INTO main_station VALUES (NULL);
+-- DROP TABLE IF EXISTS main_station;
+-- CREATE TABLE main_station (main_station_id BIGINT);
+-- INSERT INTO main_station VALUES (NULL);
+
+-- Table for important abstraction values (still not entirely in use)
+DROP TABLE IF EXISTS abstr_values;
+CREATE TABLE abstr_values (	val_id SERIAL NOT NULL PRIMARY KEY,
+				val_description TEXT,
+				val_int BIGINT,
+				val_bool BOOLEAN);
+INSERT INTO abstr_values VALUES (	DEFAULT,
+					'min_voltage',
+					NULL,
+					NULL); 
+INSERT INTO abstr_values VALUES (	DEFAULT,
+					'main_station',
+					NULL,
+					NULL);
+INSERT INTO abstr_values VALUES (	DEFAULT,
+					'base_MVA',
+					100,
+					NULL);
+INSERT INTO abstr_values VALUES (	DEFAULT,
+					'graph_dfs',
+					NULL,
+					NULL);
 
 --Other functions access this osm_metadata
 DROP TABLE IF EXISTS osm_metadata;

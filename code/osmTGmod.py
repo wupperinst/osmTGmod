@@ -397,7 +397,13 @@ class grid_model:
 
 
 
-    def execute_abstraction(self, v_plan_ids, v_year, main_station, comment = None): # None is 'translated' to NULL in Postgres (See: Adaptation of Python values to SQL types in Docu!)
+    def execute_abstraction(self, 
+                            v_plan_ids, 
+                            v_year, 
+                            min_voltage, 
+                            main_station, 
+                            graph_dfs,
+                            comment = None): # None is 'translated' to NULL in Postgres (See: Adaptation of Python values to SQL types in Docu!)
         """
         Executes the abstraction.
         Takes 2 arguments: 1. Plan_IDs (String), 2. Year (INT).
@@ -409,8 +415,25 @@ class grid_model:
         self.cur.execute("SELECT otg_apply_changes(%s, %s);", (v_plan_ids, v_year))
         self.conn.commit()
 
+        print ("Sets min_voltage...")
+        self.cur.execute("""
+            UPDATE abstr_values 
+                SET val_int = %s 
+                WHERE val_description = 'min_voltage'""", (min_voltage,))
+        self.conn.commit()
+        
         print ("Sets main_station...")
-        self.cur.execute("UPDATE main_station SET main_station_id = %s", (main_station,))
+        self.cur.execute("""
+            UPDATE abstr_values 
+                SET val_int = %s 
+                WHERE val_description = 'main_station'""", (main_station,))
+        self.conn.commit()
+        
+        print ("Sets graph_dfs...")
+        self.cur.execute("""
+            UPDATE abstr_values 
+                SET val_bool = %s 
+                WHERE val_description = 'graph_dfs'""", (graph_dfs,))
         self.conn.commit()
 
         # Executes power_script
@@ -590,11 +613,18 @@ if __name__ == '__main__':
 
             v_plan_ids = input("Development plan IDs (e.g. 1;2) (default None):") or None
             v_year = input("Year of application (e.g. 2020) (default None):") or None
+            min_voltage = input("Minimal considered voltage (default 220000):") or 220000
             main_station = input("Substation with slack node (OSM-ID) (default 35176751):") or 35176751
+            graph_dfs = input("Delete Disconnected Graphs (default False):") or False
             user_comment = input("User comment:") or None
 
             try:
-                grid_model.execute_abstraction(v_plan_ids, v_year, main_station, user_comment)
+                grid_model.execute_abstraction(v_plan_ids, 
+                                               v_year, 
+                                               min_voltage, 
+                                               main_station, 
+                                               graph_dfs,
+                                               user_comment)
             except:
                 # Get the most recent exception
                 exceptionType, exceptionValue, exceptionTraceback = sys.exc_info()
