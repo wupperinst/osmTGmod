@@ -222,6 +222,22 @@ UPDATE power_line
 	voltage_array [3] = otg_get_int_from_semic_string (voltage, 3), 
 	voltage_array [4] = otg_get_int_from_semic_string (voltage, 4);
 
+
+	-- ASSUMPTION
+	-- It is assumed that all 60kV voltages can be considered 110kV
+UPDATE power_line
+	SET
+	voltage_array [1] = 110000 WHERE voltage_array[1] = 60000;
+UPDATE power_line
+	SET
+	voltage_array [2] = 110000 WHERE voltage_array[2] = 60000;
+UPDATE power_line
+	SET
+	voltage_array [3] = 110000 WHERE voltage_array[3] = 60000;
+UPDATE power_line
+	SET
+	voltage_array [4] = 110000 WHERE voltage_array[4] = 60000;
+
 	
 		-- PROBLEM: NULL_voltage
 		-- (Es werden alle power_lines gelöscht, die keine Spannungsinformationen besitzen)
@@ -401,7 +417,12 @@ UPDATE power_circuits
 		wires = 	otg_get_int_from_wires_string (wires_text, 1),
 		circuits = 	otg_get_int_from_semic_string (circuits_text, 1),
 		frequency = 	otg_get_real_from_semic_string (frequency_text, 1);
-		
+
+-- ASSUMPTION
+-- It is assumed that all 60kV voltage levels can be considered 110kV
+UPDATE power_circuits
+	SET voltage = 110000 WHERE voltage = 60000;
+	
 ALTER TABLE power_circuits DROP COLUMN voltage_text;
 ALTER TABLE power_circuits DROP COLUMN cables_text;
 ALTER TABLE power_circuits DROP COLUMN wires_text;
