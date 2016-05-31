@@ -3215,9 +3215,9 @@ INSERT INTO results.bus_data (
 			multiline as geom,       -- Line Geometry (Not simplified) WGS84
 			ST_MakeLine(
 			(SELECT the_geom FROM bus_data 	
-					WHERE bus_i = f_bus),
+					WHERE id = f_bus),
 			(SELECT the_geom FROM bus_data 	
-					WHERE bus_i = t_bus)) -- Topo
+					WHERE id = t_bus)) -- Topo
 					
 				FROM branch_data;
  
@@ -3263,9 +3263,9 @@ INSERT INTO results.dcline_data(
 			multiline as geom,       -- Line Geometry (Not simplified) WGS84
 			ST_MakeLine(
 			(SELECT the_geom FROM bus_data 	
-					WHERE bus_i = f_bus),
+					WHERE id = f_bus),
 			(SELECT the_geom FROM bus_data 	
-					WHERE bus_i = t_bus)) -- Topo
+					WHERE id = t_bus)) -- Topo
 
 				FROM dcline_data;
 
