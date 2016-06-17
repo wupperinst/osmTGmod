@@ -103,6 +103,7 @@ class grid_model:
         self.raw_data_dir = os.path.dirname(os.getcwd()) + "/raw_data"
         self.result_dir = os.path.dirname(os.getcwd()) + "/results"
         self.qgis_projects_dir = os.path.dirname(os.getcwd()) + "/qgis_projects"
+        self.transfer_busses_dir = os.path.dirname(os.getcwd()) + "/transfer_busses"
         
         
         # Basic folders are created if not existent
@@ -114,6 +115,9 @@ class grid_model:
             
         if not os.path.exists(self.qgis_projects_dir):
             os.makedirs(self.qgis_projects_dir)
+        
+        if not os.path.exists(self.transfer_busses_dir):
+            os.makedirs(self.transfer_busses_dir)
 
         # Server connection:
         print ("Connecting to Server...")
@@ -403,6 +407,8 @@ class grid_model:
                             min_voltage, 
                             main_station, 
                             graph_dfs,
+                            conn_subgraphs,
+                            transfer_busses,
                             comment = None): # None is 'translated' to NULL in Postgres (See: Adaptation of Python values to SQL types in Docu!)
         """
         Executes the abstraction.
@@ -415,6 +421,8 @@ class grid_model:
         self.cur.execute("SELECT otg_apply_changes(%s, %s);", (v_plan_ids, v_year))
         self.conn.commit()
 
+        # Updates (Inserts) abstraction parameters
+                # Should be done in for-loop
         print ("Sets min_voltage...")
         self.cur.execute("""
             UPDATE abstr_values 
@@ -434,6 +442,20 @@ class grid_model:
             UPDATE abstr_values 
                 SET val_bool = %s 
                 WHERE val_description = 'graph_dfs'""", (graph_dfs,))
+        self.conn.commit()
+        
+        print ("Sets conn_subgraphs...")
+        self.cur.execute("""
+            UPDATE abstr_values 
+                SET val_bool = %s 
+                WHERE val_description = 'conn_subgraphs'""", (conn_subgraphs,))
+        self.conn.commit()
+        
+        print ("Sets transfer_busses...") # Netzinseln
+        self.cur.execute("""
+            UPDATE abstr_values 
+                SET val_bool = %s 
+                WHERE val_description = 'transfer_busses'""", (transfer_busses,))
         self.conn.commit()
 
         # Executes power_script
@@ -611,19 +633,36 @@ if __name__ == '__main__':
 
         elif choice == '2':
 
-            v_plan_ids = input("Development plan IDs (e.g. 1;2) (default None):") or None
-            v_year = input("Year of application (e.g. 2020) (default None):") or None
+            plan_ids = input("Development plan IDs (e.g. 1;2) (default None):") or None
+            
+            year = input("Year of application (e.g. 2020) (default None):") or None
+            
             min_voltage = input("Minimal considered voltage (default 220000):") or 220000
+            
             main_station = input("Substation with slack node (OSM-ID) (default 35176751):") or 35176751
-            graph_dfs = input("Delete Disconnected Graphs (default False):") or False
+            
+            graph_dfs_input = input("Delete disconnected (sub-)graphs (default No)?:") or 'no'
+            graph_dfs = general_funcs.ask_yes_no(graph_dfs_input) # Returns True for yes input
+            
+            if graph_dfs == False: # If Disconnected Graphs are not deleted
+                conn_subgraphs_input = input("Connect subgrids (disconnected subgraphs) to main grid (dafault No)?:") or 'no'
+                conn_subgraphs = general_funcs.ask_yes_no(conn_subgraphs_input) # Returns True for yes input
+            else:
+                conn_subgraphs = False # In case Subgraphs are deleted, a connection of these doesn't make sense
+            
+            transfer_busses_input = input("Connect disconnected transfer busses (predefined 'Netzinseln') to nearest grid-connected substation (default No)?:") or 'no'
+            transfer_busses = general_funcs.ask_yes_no(transfer_busses_input)
+            
             user_comment = input("User comment:") or None
 
             try:
-                grid_model.execute_abstraction(v_plan_ids, 
-                                               v_year, 
+                grid_model.execute_abstraction(plan_ids, 
+                                               year, 
                                                min_voltage, 
                                                main_station, 
                                                graph_dfs,
+                                               conn_subgraphs,
+                                               transfer_busses,
                                                user_comment)
             except:
                 # Get the most recent exception
