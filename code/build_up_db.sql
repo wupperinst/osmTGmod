@@ -262,4 +262,13 @@ DROP TABLE IF EXISTS osm_metadata;
 CREATE TABLE osm_metadata (downloaded date, imported date);
 INSERT INTO osm_metadata (downloaded, imported) VALUES (NULL, NULL);
 
+-- Table for transfer busses (open_ego)
+DROP TABLE IF EXISTS transfer_busses;
+CREATE TABLE transfer_busses(
+		osm_id BIGINT,
+		object_type TEXT,
+		center_geom geometry (Point, 4326));
+ALTER TABLE transfer_busses
+	ADD CONSTRAINT tb_osm_id_pk primary key (osm_id); 
+CREATE INDEX tb_osm_id_idx ON transfer_busses(osm_id);
  

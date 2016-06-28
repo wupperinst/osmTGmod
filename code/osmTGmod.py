@@ -25,6 +25,7 @@ from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT as _il # Needed for c
 
 import subprocess
 import os
+import csv
 
 import datetime
 import sys
@@ -45,7 +46,7 @@ else:
         if hasattr(__builtins__, 'raw_input'):
             input=raw_input
     import io
-    
+
 
 import general_funcs
 import build_up_db
@@ -71,51 +72,51 @@ class grid_model:
         self.database = database
 
         self.standard_db = 'postgres'
-        
+
         self.platform = None # Platform specific variable
-        
-        
+
+
         ## General Platform Check (Not needed)
-        if platform.system() == "Darwin": 
-            self.platform = 'mac' 
+        if platform.system() == "Darwin":
+            self.platform = 'mac'
             print("Detected platform: Darwin")
-        
+
         elif platform.system() == "Linux" or platform.system() == "Linux2":
-            self.platform = 'lin'            
+            self.platform = 'lin'
             print("Detected platform: Linux")
-            
+
         elif platform.system() == "Win32" or platform.system() == "win32":
-            self.platform = 'win'             
+            self.platform = 'win'
             print("Detected platform: Windows")
-            
+
         else:
             print("Detected platform: None")
-   
-   
+
+
         ## Osmosis Path and Activation
         self.osmosis_path = os.getcwd() + '/osmosis/bin/osmosis' # The provided Osmosis Version is allways used
-        st = os.stat(self.osmosis_path) 
+        st = os.stat(self.osmosis_path)
         os.chmod(self.osmosis_path, st.st_mode | stat.S_IEXEC) # Set the osmosis file as executable
-   
-   
-        ## Setting osmTGmod folder structure: 
+
+
+        ## Setting osmTGmod folder structure:
         print("Checking/Creating file directories")
         self.raw_data_dir = os.path.dirname(os.getcwd()) + "/raw_data"
         self.result_dir = os.path.dirname(os.getcwd()) + "/results"
         self.qgis_projects_dir = os.path.dirname(os.getcwd()) + "/qgis_projects"
         self.transfer_busses_dir = os.path.dirname(os.getcwd()) + "/transfer_busses"
-        
-        
+
+
         # Basic folders are created if not existent
         if not os.path.exists(self.raw_data_dir):
             os.makedirs(self.raw_data_dir)
-            
+
         if not os.path.exists(self.result_dir):
             os.makedirs(self.result_dir)
-            
+
         if not os.path.exists(self.qgis_projects_dir):
             os.makedirs(self.qgis_projects_dir)
-        
+
         if not os.path.exists(self.transfer_busses_dir):
             os.makedirs(self.transfer_busses_dir)
 
@@ -244,7 +245,7 @@ class grid_model:
         else:
             # Python 2 io.open to process data as binary, not as str
             fh = io.open(qgis_processing_path + "conn.txt","wb")
-        
+
         fh.write(conn_str)
         fh.close()
 
@@ -279,7 +280,7 @@ class grid_model:
 
         proc = subprocess.Popen('%s --rbf %s --tf accept-ways power=* --tf accept-relations route=power --used-node --wb %s'
                     %(self.osmosis_path, file_path, output_file_path), shell=True)
-                         
+
         print ("Filtering OSM-Data...")
         proc.wait() # To make sure Script waits until Osmosis is ready...
 
@@ -380,7 +381,7 @@ class grid_model:
                 self.osmosis_filter(filename_raw, filename_filter)
 
                 not_valid = False
-                
+
 
             elif choice == '3':
 
@@ -401,11 +402,11 @@ class grid_model:
 
 
 
-    def execute_abstraction(self, 
-                            v_plan_ids, 
-                            v_year, 
-                            min_voltage, 
-                            main_station, 
+    def execute_abstraction(self,
+                            v_plan_ids,
+                            v_year,
+                            min_voltage,
+                            main_station,
                             graph_dfs,
                             conn_subgraphs,
                             transfer_busses,
@@ -425,39 +426,43 @@ class grid_model:
                 # Should be done in for-loop
         print ("Sets min_voltage...")
         self.cur.execute("""
-            UPDATE abstr_values 
-                SET val_int = %s 
+            UPDATE abstr_values
+                SET val_int = %s
                 WHERE val_description = 'min_voltage'""", (min_voltage,))
         self.conn.commit()
-        
+
         print ("Sets main_station...")
         self.cur.execute("""
-            UPDATE abstr_values 
-                SET val_int = %s 
+            UPDATE abstr_values
+                SET val_int = %s
                 WHERE val_description = 'main_station'""", (main_station,))
         self.conn.commit()
-        
+
         print ("Sets graph_dfs...")
         self.cur.execute("""
-            UPDATE abstr_values 
-                SET val_bool = %s 
+            UPDATE abstr_values
+                SET val_bool = %s
                 WHERE val_description = 'graph_dfs'""", (graph_dfs,))
         self.conn.commit()
-        
+
         print ("Sets conn_subgraphs...")
         self.cur.execute("""
-            UPDATE abstr_values 
-                SET val_bool = %s 
+            UPDATE abstr_values
+                SET val_bool = %s
                 WHERE val_description = 'conn_subgraphs'""", (conn_subgraphs,))
         self.conn.commit()
-        
+
         print ("Sets transfer_busses...") # Netzinseln
         self.cur.execute("""
-            UPDATE abstr_values 
-                SET val_bool = %s 
+            UPDATE abstr_values
+                SET val_bool = %s
                 WHERE val_description = 'transfer_busses'""", (transfer_busses,))
         self.conn.commit()
-
+        
+        if transfer_busses:
+            tb_file_path = self.transfer_busses_dir + "/transfer_busses.csv"
+            self.read_transfer_busses(tb_file_path)
+    
         # Executes power_script
         print ("Executes Abstraction...")
         general_funcs.execute_sql(self.conn, self.cur, 'power_script.sql')
@@ -483,17 +488,50 @@ class grid_model:
 
             outputquery = "COPY ({0}) TO STDOUT WITH DELIMITER ',' CSV HEADER".format(query)
 
-            if (sys.version_info > (3, 0)): 
+            if (sys.version_info > (3, 0)):
                 fh = open(filename, encoding='utf-8', mode = "w")
             else:
                 fh = open(filename, "w")
 
 
             self.cur.copy_expert(outputquery, fh)
-                       
+
             fh.close()
 
         print ('All tables written to %s!' %path)
+
+
+    def read_transfer_busses (self, file_path):
+
+        # Deletes all entries of transfer_busses table
+        self.cur.execute("""
+DELETE FROM transfer_busses;
+        """)
+        self.conn.commit()
+
+        reader = csv.reader(open(file_path, 'r'))
+        next(reader, None) # Skips header
+
+        print ("Copying transfer-busses from CSV to database...")
+        for row in reader:
+            osm_id = str(row[10])
+        
+            if osm_id[:1] == 'w':
+                object_type = 'way'
+            elif osm_id[:1] == 'n':
+                object_type = 'node'
+            else:
+                object_type = None
+        
+            osm_id_int = int(osm_id[1:])
+            
+            center_geom = str(row[5])
+        
+            self.cur.execute("""
+INSERT INTO transfer_busses (osm_id, object_type, center_geom)
+    VALUES (%s, %s, %s);
+            """, (osm_id_int, object_type, center_geom))
+            self.conn.commit()
 
 
     def insert_plan(self, id, name, comment):
@@ -507,9 +545,9 @@ class grid_model:
 
         self.cur.execute ("""
             INSERT INTO anwendung_aenderung (aenderungs_id, plan_id, jahr, plan_intern_id, copied, copied_from)
-	            SELECT aenderungs_id, %s, jahr, plan_intern_id, TRUE, %s
-	                FROM anwendung_aenderung
-	                WHERE plan_id = %s""", (plan_id_new, plan_id_old, plan_id_old))
+                SELECT aenderungs_id, %s, jahr, plan_intern_id, TRUE, %s
+                    FROM anwendung_aenderung
+                    WHERE plan_id = %s""", (plan_id_new, plan_id_old, plan_id_old))
         self.conn.commit()
 
         print ("Plan successfully copied!")
@@ -590,15 +628,15 @@ if __name__ == '__main__':
 
 
     print("Checking QGis processing path...")
-    
+
     if os.path.exists(os.getenv("HOME") + "/.qgis2/processing/scripts/"):
         qgis_processing_path = os.getenv("HOME") + "/.qgis2/processing/scripts/"
         print("QGis processing path: " + qgis_processing_path)
     # The 'malte' Option is not needed. "HOME" should work fine...
     else:
         qgis_processing_path = input("No QGis processing path found! Provide QGis-Processing Path:")
-    
-    
+
+
     host = input('host (default 192.168.0.46):') or '192.168.0.46'
     port = input('port (default 5432):') or '5432'
     user = input('user (default postgres):') or 'postgres'
@@ -634,32 +672,48 @@ if __name__ == '__main__':
         elif choice == '2':
 
             plan_ids = input("Development plan IDs (e.g. 1;2) (default None):") or None
-            
+
             year = input("Year of application (e.g. 2020) (default None):") or None
-            
+
             min_voltage = input("Minimal considered voltage (default 220000):") or 220000
-            
+
             main_station = input("Substation with slack node (OSM-ID) (default 35176751):") or 35176751
-            
+
             graph_dfs_input = input("Delete disconnected (sub-)graphs (default No)?:") or 'no'
             graph_dfs = general_funcs.ask_yes_no(graph_dfs_input) # Returns True for yes input
-            
+
             if graph_dfs == False: # If Disconnected Graphs are not deleted
                 conn_subgraphs_input = input("Connect subgrids (disconnected subgraphs) to main grid (dafault No)?:") or 'no'
                 conn_subgraphs = general_funcs.ask_yes_no(conn_subgraphs_input) # Returns True for yes input
             else:
                 conn_subgraphs = False # In case Subgraphs are deleted, a connection of these doesn't make sense
-            
-            transfer_busses_input = input("Connect disconnected transfer busses (predefined 'Netzinseln') to nearest grid-connected substation (default No)?:") or 'no'
+
+
+            transfer_busses_input = input( \
+            "Connect disconnected transfer busses (predefined 'Netzinseln') to nearest grid-connected " \
+            "substation (default No)?:") or 'no'
             transfer_busses = general_funcs.ask_yes_no(transfer_busses_input)
-            
+
+#            cond_file_good = False
+#            while not cond_file_good:
+#                # Better if file exists:, dann machen und weiter, sonst input...
+#                try:
+#                    grid_model.read_transfer_busses(file_path)
+#                    cond_file_good = True
+#                except:
+#                    input("Press Enter to continue...")
+#
+#            print ("geht weiter...")
+             # Ich sollte mich nochmal mit Try und Except beschäftigen
+             # Besser nicht verwenden, da Stabili
+
             user_comment = input("User comment:") or None
 
             try:
-                grid_model.execute_abstraction(plan_ids, 
-                                               year, 
-                                               min_voltage, 
-                                               main_station, 
+                grid_model.execute_abstraction(plan_ids,
+                                               year,
+                                               min_voltage,
+                                               main_station,
                                                graph_dfs,
                                                conn_subgraphs,
                                                transfer_busses,

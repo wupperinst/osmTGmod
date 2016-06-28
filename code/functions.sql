@@ -1921,6 +1921,113 @@ $$
 LANGUAGE plpgsql;
 
 
+	-- otg_transfer_busses ()
+
+
+CREATE OR REPLACE FUNCTION otg_transfer_busses () RETURNS void
+AS $$ 
+DECLARE
+v_cnt INT;
+v_smallest_dist FLOAT;
+v_this_dist FLOAT;
+v_trans_bus_id BIGINT;
+v_substation_id BIGINT;
+
+v_trans_bus_geom geometry (Point, 4326);
+v_substation_geom geometry (Point, 4326);
+v_substation_voltage INT;
+
+v_trans_bus RECORD;
+v_substation RECORD;
+
+v_max_bus_id BIGINT;
+v_max_branch_id BIGINT;
+BEGIN
+IF (SELECT val_bool 
+	FROM abstr_values
+	WHERE val_description = 'transfer_busses') -- Only if transfer_busses is selected True (Python Script)
+	THEN
+
+	-- All the substations that are allready found can be ignored
+	DELETE FROM transfer_busses
+		WHERE osm_id IN (SELECT substation_id FROM bus_data);
+
+	LOOP
+		v_cnt := (SELECT count(*) FROM transfer_busses);
+		EXIT WHEN v_cnt = 0;
+
+		v_smallest_dist := 1000000;
+		FOR v_trans_bus IN
+			SELECT osm_id, center_geom
+				FROM transfer_busses
+		LOOP
+			FOR v_substation IN
+				SELECT id, voltage, the_geom
+					FROM bus_data
+					WHERE frequency = 50
+					ORDER BY voltage -- Will be conected with 110 preferred
+			LOOP
+				v_this_dist := ST_Distance(	v_trans_bus.center_geom, 
+								v_substation.the_geom);
+				IF (v_this_dist < v_smallest_dist)
+					THEN 
+					v_smallest_dist := v_this_dist;
+					v_trans_bus_id := v_trans_bus.osm_id;
+					v_trans_bus_geom := v_trans_bus.center_geom;
+					v_substation_id := v_substation.id;
+					v_substation_voltage := v_substation.voltage;
+					v_substation_geom := v_substation.the_geom;
+				END IF;
+				
+			END LOOP;
+		END LOOP;
+
+		v_max_bus_id := (SELECT max(id) FROM bus_data);
+		INSERT INTO bus_data (	id, 
+					cnt, 
+					the_geom, 
+					voltage, 
+					frequency, 
+					substation_id, 
+					cntr_id)
+			VALUES (v_max_bus_id + 1, 
+				1,
+				v_trans_bus_geom,
+				v_substation_voltage,
+				50,
+				v_trans_bus_id,
+				'DE');
+				
+		v_max_branch_id := (SELECT max(branch_id) FROM branch_data);
+		INSERT INTO branch_data (	branch_id, 
+						length,
+						f_bus,
+						t_bus,
+						voltage,
+						cables,
+						frequency,
+						power,
+						multiline)
+			VALUES(	v_max_branch_id + 1,
+				v_smallest_dist,
+				v_max_bus_id + 1,
+				v_substation_id,
+				v_substation_voltage,
+				3,
+				50,
+				'cable',
+				ST_Multi(ST_MakeLine(	v_trans_bus_geom,
+							v_substation_geom)));
+		DELETE FROM transfer_busses
+			WHERE osm_id = v_trans_bus_id;
+	END LOOP;
+END IF;
+
+END
+$$
+LANGUAGE plpgsql;
+
+
 -- FUNKTIONEN ZUR BERECHNUNG DER LEITUNGS/TRAFO SPEZIFIKATIONEN
 
 	-- CALC_BRANCH_SPECIFICATIONS

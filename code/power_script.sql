@@ -1040,6 +1040,8 @@ ALTER TABLE bus_data ADD COLUMN discovered BOOLEAN DEFAULT false;
 
 SELECT otg_graph_analysis (); -- If in Python Input graph_dfs is selected True, then disconnected graphs will be deleted
 
+SELECT otg_transfer_busses ();
+
 -- Erweitert branch_data um einfache Topologische Geometrie
 ALTER TABLE branch_data ADD COLUMN simple_geom GEOMETRY (LINESTRING, 4326);
 UPDATE branch_data
