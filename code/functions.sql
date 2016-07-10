@@ -1410,49 +1410,54 @@ LANGUAGE plpgsql;
 -- This function connects dead ends that are close to a transmission line...
 -- to one of the transmission line vertices. 
 -- Until now this is quick and dirty and needs to be improved.	
-CREATE OR REPLACE FUNCTION otg_connect_dead_ends_to_cont_lines () RETURNS void
-AS $$
-DECLARE
-v_bus RECORD;
-v_hit_line RECORD;
-v_max_line_id BIGINT;
-v_associated_line BIGINT;
-BEGIN
-v_max_line_id := (SELECT max(line_id) FROM power_line_sep);
-FOR v_bus IN	
-	SELECT id, the_geom, voltage, frequency 
-		FROM bus_data WHERE 	origin = 'lin' AND
-					cntr_id = 'DE' AND
-					substation_id IS NULL AND
-					cnt = 1 AND 
-					voltage = 110000 -- unitl now only for 110kV
-LOOP
 
-	-- Hit another line with this bus + buffer
-	SELECT f_bus, t_bus 
-				INTO v_hit_line 
-				FROM power_line_sep 
-				WHERE 	NOT f_bus = v_bus.id AND
-					NOT t_bus = v_bus.id AND -- Must not find itself
-					voltage = v_bus.voltage AND
-					frequency = v_bus.frequency AND
-					ST_intersects(way, ST_Buffer(v_bus.the_geom, 0.0005)) -- Same buffer as in CreateTopology
-					LIMIT 1; -- Include ORDER BY!!
+-- This function is now disabled, because the connection will be covered by the new
+-- transfer-bus connection algorithm.
+-- Can later be activated after improving this algorithm
 
-	CONTINUE WHEN v_hit_line IS NULL;
-
-	-- transmission lines with dead ends get... 
-	-- a new connection (with one of hit_line's bus)
-	-- This should be improved (distances, choice of bus etc....)
-	UPDATE power_line_sep SET f_bus = v_hit_line.f_bus 
-				WHERE f_bus = v_bus.id;
-	UPDATE power_line_sep SET t_bus = v_hit_line.t_bus
-				WHERE t_bus = v_bus.id;
-				
-END LOOP;	
-END
-$$
-LANGUAGE plpgsql;
+-- CREATE OR REPLACE FUNCTION otg_connect_dead_ends_to_cont_lines () RETURNS void
+-- AS $$
+-- DECLARE
+-- v_bus RECORD;
+-- v_hit_line RECORD;
+-- v_max_line_id BIGINT;
+-- v_associated_line BIGINT;
+-- BEGIN
+-- v_max_line_id := (SELECT max(line_id) FROM power_line_sep);
+-- FOR v_bus IN	
+-- 	SELECT id, the_geom, voltage, frequency 
+-- 		FROM bus_data WHERE 	origin = 'lin' AND
+-- 					cntr_id = 'DE' AND
+-- 					substation_id IS NULL AND
+-- 					cnt = 1 AND 
+-- 					voltage = 110000 -- unitl now only for 110kV
+-- LOOP
+-- 
+-- 	-- Hit another line with this bus + buffer
+-- 	SELECT f_bus, t_bus 
+-- 				INTO v_hit_line 
+-- 				FROM power_line_sep 
+-- 				WHERE 	NOT f_bus = v_bus.id AND
+-- 					NOT t_bus = v_bus.id AND -- Must not find itself
+-- 					voltage = v_bus.voltage AND
+-- 					frequency = v_bus.frequency AND
+-- 					ST_intersects(way, ST_Buffer(v_bus.the_geom, 0.0005)) -- Same buffer as in CreateTopology
+-- 					LIMIT 1; -- Include ORDER BY!!
+-- 
+-- 	CONTINUE WHEN v_hit_line IS NULL;
+-- 
+-- 	-- transmission lines with dead ends get... 
+-- 	-- a new connection (with one of hit_line's bus)
+-- 	-- This should be improved (distances, choice of bus etc....)
+-- 	UPDATE power_line_sep SET f_bus = v_hit_line.f_bus 
+-- 				WHERE f_bus = v_bus.id;
+-- 	UPDATE power_line_sep SET t_bus = v_hit_line.t_bus
+-- 				WHERE t_bus = v_bus.id;
+-- 				
+-- END LOOP;	
+-- END
+-- $$
+-- LANGUAGE plpgsql;
 
 
 	-- otg_cut_off_dead_ends_iteration
@@ -1503,7 +1508,7 @@ CREATE OR REPLACE FUNCTION otg_bus_analysis (v_origin character varying (3)) RET
 AS $$
 BEGIN
 
--- Jedem Knoten wird einen Länderkennung gegeben
+-- Jedem Knoten wird eine Länderkennung gegeben
 UPDATE bus_data
 	SET cntr_id = 	(SELECT nuts.nuts_id
 			FROM nuts_poly nuts, bus_data bus
@@ -1922,8 +1927,12 @@ LANGUAGE plpgsql;
 
 
 	-- otg_transfer_busses ()
+	
+-- This function like it is can later better be used to connect disconnected subgrids
+-- It takes the closest substation (unused transfer-bus to grid bus) and connects sequentially.
+-- This can easily be changed to be used for disconnected subgrids
 
-
+-- The transfer-bus connection should be improved in the way described in GitHub.
 CREATE OR REPLACE FUNCTION otg_transfer_busses () RETURNS void
 AS $$ 
 DECLARE
@@ -1964,7 +1973,8 @@ IF (SELECT val_bool
 			FOR v_substation IN
 				SELECT id, voltage, the_geom
 					FROM bus_data
-					WHERE frequency = 50
+					WHERE 	frequency = 50 AND
+						NOT substation_id IS NULL -- Only substations no grid busses (Muffen)
 					ORDER BY voltage -- Will be conected with 110 preferred
 			LOOP
 				v_this_dist := ST_Distance(	v_trans_bus.center_geom, 

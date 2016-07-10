@@ -18,6 +18,7 @@
 
 # Writes QGis Processing Scripts into QGis-Processing-Folder. Scripts get Connection Information from Conn-File (created when Grid_model is initialized)
 
+## Processing for grid development
 def write_processing(qgis_processing_path):
 
 
@@ -105,6 +106,8 @@ print ('Zuordnung wurde gespeichert und Change_log-View erneuert') '''
     fh.write(metadata_grid_development)
     fh.close()
 
+
+## Processing for result visualisation
 
     show_results = '''##result_id=number 1
 

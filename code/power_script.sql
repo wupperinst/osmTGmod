@@ -178,8 +178,6 @@ DELETE FROM power_line WHERE 	NOT id IN	(SELECT line.id
 
 	-- BEZIEHUNG POWER_LINE/POWER SUBSTATION
 
-
-
 -- Macht eine neue Spalte, die die mögliche Substation-ID der Start- und Endpunkte der Leitung erhält.
 -- Untersuchung ob Anfangs- und Endpunkte der Leitungen innerhalb einer Substation liegen
 ALTER TABLE power_line ADD COLUMN point_substation_id BIGINT [2];
@@ -202,7 +200,6 @@ DELETE FROM power_line WHERE point_substation_id [1] = point_substation_id [2];
 
 	
 	-- UNTERSUCHUNG SPANNUNGSEBENEN
---UPDATe power_line SET frequency = '0' WHERE id = 316867863
 
 -- Mach Neue Spalte mit Anzahl Spannungs-level...
 -- ...und füllt diese mit der Anzahl Voltage levels
@@ -393,7 +390,7 @@ ALTER TABLE power_circ_members
 	ADD CONSTRAINT circuit_members_fk foreign key (relation_id) references power_circuits (id) ON DELETE CASCADE;
 CREATE INDEX members_circuit_id_idx ON power_circ_members (relation_id);
 
--- Spaltenname meber_id ist irreführend dieser wird daher zu line_id umbenannt
+-- Spaltenname member_id ist irreführend dieser wird daher zu line_id umbenannt
 ALTER TABLE power_circ_members RENAME COLUMN member_id TO line_id;
 
 
@@ -431,9 +428,6 @@ ALTER TABLE power_circuits DROP COLUMN frequency_text;
 
 
 
- 	-- MAXIMALE SPANNUNG
-
-
 	-- INFORMATIONSÜBERGABE POWER_LINE -> power_circ_members
 	-- (Ebenfalls um die Prozessierung zu erleichtern, werden den power_circ_members weitere Informationen übergeben)
 	-- (Dies ermöglich unabhängige Erstellung der Topologie)
@@ -459,12 +453,13 @@ DELETE FROM power_circ_members mem
 	
 
 	
--- Löscht alle power_circ_members, deren Spannung unter min_volt liegt.
+-- Löscht alle power_circuits, deren Spannung unter min_volt liegt.
 -- (Bei den Subtraktionen (der Stromkreise von den Leitungen) werden die nicht untersuchten Spannugsebenen nicht benötigt)
 DELETE FROM power_circuits
 	WHERE voltage < (SELECT val_int 
 				FROM abstr_values 
 				WHERE val_description = 'min_voltage');
+
 
 		-- ANNAHME (frequency): 
 		-- Alle Stromkreise, die keinen Frequenzwert haben (und 220kv oder 380kv), bekommen frequency = 50
@@ -504,19 +499,6 @@ UPDATE power_circuits
 			WHERE frequency IS NULL;
 			
 	DROP TRIGGER problem_log_trigger ON power_circuits;
-
--- 16.7 should not be deleted (at this point), because frequency info can be written in to power_lines, when substracting!!!
--- 	-- PROBLEM: 16.7 frequency (not really a problem, just docu)
--- 	-- (Löscht alle power_circuits, die Frequenz = 16.7 haben)
--- 	CREATE TRIGGER problem_log_trigger
--- 		AFTER DELETE ON power_circuits
--- 		FOR EACH ROW 
--- 		EXECUTE PROCEDURE otg_power_circuits_problem_tg ('frequency=16.7');
--- 
--- 		DELETE FROM power_circuits -- Impliziert Cascadenlöschung der Members... 
--- 			WHERE frequency = 16.7;
--- 			
--- 	DROP TRIGGER problem_log_trigger ON power_circuits;
 
 	
 -- Annahme: Stromkreise, die keinen Cable-Eintrag haben (cables = NULL)
@@ -608,7 +590,7 @@ ALTER TABLE power_circ_members ADD COLUMN t_bus BIGINT;
 -- Aufteilen der Tabelle 'power_circ_members' um DB-Servern mit wenig RAM oder wenigen max_locks_per transaction die Berechnung zu ermöglichen.
 
 -- The Split does good things, but is not beautiful!
--- Nessesary for memory reasons
+-- ...for memory reasons
 SELECT otg_split_table('power_circ_members', 'relation_id');
 
 SELECT otg_create_grid_topology ('split_table_1');
@@ -740,7 +722,6 @@ SELECT otg_substract_circuits() ;
 -- Durch den Puffer (otg_connect_dead_ends_with_substation) "Übergangene" Leitungen (Tabelle power_line) werden angepasst.
 -- Dies kann erst an dieser Stelle geschehen, damit nicht unkontrolliert cables von den power_line abgezogen werden
 -- (sondern nur die bis hier überbleibenden betrachtet werden)
--- Zudem können für das "Abziehen" verantwortliche Stromkreise evtl. gelöscht werden (z.B. wegen dead end).
 SELECT otg_substract_cables_within_buffer (id) FROM bus_data WHERE buffered = true AND origin = 'rel'; -- Also alle erfolgreichen Buffer
 
 
@@ -859,19 +840,6 @@ UPDATE power_line_sep
 	WHERE frequency IS NULL; -- this needs to be checked
 		-- there may be still many train-lines (in theory 16.7Hz) among the power-lines
 
--- I will give it a try and leave 16.7 inside till the end...
--- 		-- PROBLEM: frequency=16.7 (not really a problem, just docu)
--- 		-- (Es werden diejenigen power_line_sep gelöscht, die frequency = 16.7 aufweisen) 
--- 	CREATE TRIGGER problem_log_trigger
--- 		AFTER DELETE ON power_line_sep
--- 		FOR EACH ROW 
--- 		EXECUTE PROCEDURE otg_power_line_as_branch_problem_tg ('frequency=16.7');
--- 
--- 	DELETE FROM power_line_sep 
--- 		WHERE 	frequency = 16.7;
--- 
--- 	DROP TRIGGER problem_log_trigger ON power_line_sep;
-
 
 	-- TOPOLOGIE
 	-- (Hier werden die Topologien der Spannungsebenen berechnet)
@@ -893,7 +861,8 @@ SELECT otg_bus_analysis ('lin');
 -- This function connects dead ends that are close to a transmission line...
 -- to one of the transmission line vertices. 
 -- Until now this is quick and dirty and needs to be improved.
-SELECT otg_connect_dead_ends_to_cont_lines ();
+-- Disabled because covered by other function (see functio itself)
+-- SELECT otg_connect_dead_ends_to_cont_lines ();
 
 	-- PROBLEM: dead_end
 	-- (bei den noch überbleibendne power_lines werden diejenigen iterativ gelöscht, die ein offenes Ende haben)

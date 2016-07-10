@@ -32,7 +32,7 @@ import sys
 import stat
 import platform
 
-if (sys.version_info > (3, 0)):
+if (sys.version_info >= (3, 0)):
     # Python 3 only import
     import urllib.request
 else:
@@ -41,7 +41,7 @@ else:
     from urllib2 import urlopen
 
     try:
-        from  builtins import input #First check if future module has been installed
+        from  builtins import input # First check if future module has been installed
     except ImportError:
         if hasattr(__builtins__, 'raw_input'):
             input=raw_input
@@ -56,17 +56,18 @@ import qgis_projects
 
 class grid_model:
 
-    def __init__(self,
+    def __init__(   self,
                     database,
                     password,
                     qgis_processing_path,
-                    host='192.168.0.46',
-                    port='5432',
-                    user='postgres'
-                    ):
+                    host,
+                    port,
+                    user):
 
         self.host=host
         self.port=port
+        self.osmosis_host = str(self.host) + ':' + str(self.port)
+        
         self.user=user
         self.password=password
         self.database = database
@@ -76,7 +77,7 @@ class grid_model:
         self.platform = None # Platform specific variable
 
 
-        ## General Platform Check (Not needed)
+        ## General Platform Check 
         if platform.system() == "Darwin":
             self.platform = 'mac'
             print("Detected platform: Darwin")
@@ -84,10 +85,6 @@ class grid_model:
         elif platform.system() == "Linux" or platform.system() == "Linux2":
             self.platform = 'lin'
             print("Detected platform: Linux")
-
-        elif platform.system() == "Win32" or platform.system() == "win32":
-            self.platform = 'win'
-            print("Detected platform: Windows")
 
         else:
             print("Detected platform: None")
@@ -107,7 +104,7 @@ class grid_model:
         self.transfer_busses_dir = os.path.dirname(os.getcwd()) + "/transfer_busses"
 
 
-        # Basic folders are created if not existent
+        ## Basic folders are created if not existent
         if not os.path.exists(self.raw_data_dir):
             os.makedirs(self.raw_data_dir)
 
@@ -120,11 +117,11 @@ class grid_model:
         if not os.path.exists(self.transfer_busses_dir):
             os.makedirs(self.transfer_busses_dir)
 
-        # Server connection:
+        ## Server connection:
         print ("Connecting to Server...")
 
         try:
-            # get a connection, if a connect cannot be made an exception will be raised here
+            # Standard database connection is used to check out server connection
             conn_server = psycopg2.connect( host=self.host,
                                             port=self.port,
                                             database=self.standard_db,
@@ -135,44 +132,41 @@ class grid_model:
         except:
             # Get the most recent exception
             exceptionType, exceptionValue, exceptionTraceback = sys.exc_info()
-            # Exit the script and print an error telling what happened.
-            sys.exit("Server connection failed!\n ->%s" % (exceptionValue))
+            sys.exit(exceptionValue)
 
         print ("Connecting to Database...")
 
         try:
-            # get a connection, if a connect cannot be made an exception will be raised here
             self.conn = psycopg2.connect(host=self.host,
                                 port=self.port,
                                 database=self.database,
                                 user=self.user,
                                 password=self.password)
-            # conn.cursor will return a cursor object, you can use this cursor to perform queries
+            # conn.cursor will return a cursor object, used to perform queries
             self.cur = self.conn.cursor()
             print ("Connected to Database!")
 
         except:
             # Get the most recent exception
-            exceptionType, exceptionValue, exceptionTraceback = sys.exc_info()
-            # Exit the script and print an error telling what happened.
-            # Checks if only password wrong???
+            # exceptionType, exceptionValue, exceptionTraceback = sys.exc_info()
+            # Can be improved by listing the existing databases and make a choice
             print ("There is no Database named '%s'!" % (self.database))
-            choice = input("Do you wish to create Database '%s' and build up osmTgmod-database?:" % (self.database)).lower()
+            choice = input("Do you wish to create Database '%s' and build up "\
+                "osmTgmod-database?:" % (self.database)).lower()
 
             if general_funcs.ask_yes_no(choice) == True:
-                print ("OK lets go! Creating Database...")
+                print ("Creating Database...")
 
                 # Creates new Database
                 conn_server.set_isolation_level(_il)
                 cur_server.execute('CREATE DATABASE %s' %self.database)
-                # conn_server.commit()
                 conn_server.close()
                 print ("New Database Created!")
 
                 # Connects to new Database
                 print ("Connecting to new Database...")
                 try:
-                    # get a connection, if a connection cannot be made an exception will be raised here
+                    
                     self.conn = psycopg2.connect(host=self.host,
                                 port=self.port,
                                 database=self.database,
@@ -183,18 +177,21 @@ class grid_model:
                     print ("Connected to Database!")
 
                     print ("Creating Status-Table...")
-                    # Creates a new table for documenting Database Status
+                    
+                    # Creates table _db_status... 
+                    # ...for documenting database module status
+                    # status = FALSE by default
                     self.cur.execute ("""
-                        DROP TABLE IF EXISTS _db_status;
-                        CREATE TABLE _db_status (module TEXT, status BOOLEAN);
-                        INSERT INTO _db_status (module, status) VALUES ('grid_model', FALSE);""")
+DROP TABLE IF EXISTS _db_status;
+CREATE TABLE _db_status (module TEXT, status BOOLEAN);
+INSERT INTO _db_status (module, status) VALUES ('grid_model', FALSE);
+                                        """)
                     self.conn.commit()
 
                 except:
                     # Get the most recent exception
                     exceptionType, exceptionValue, exceptionTraceback = sys.exc_info()
-                    # Exit the script and print an error telling what happened.
-                    sys.exit("Undefinded Problem! Could not connect to new Database '%s'! (Please drop new database and try again)" % (self.database))
+                    sys.exit(exceptionValue)
 
             else:
                 sys.exit("NO Database is created - Programm cancelled by user!")
@@ -208,7 +205,8 @@ class grid_model:
 
             print ("Database not ready! Building up Database...")
 
-            build_up_db.build_up_db(self.conn, self.cur)
+            ## builds up database
+            build_up_db.build_up_db(self.conn, self.cur) # See PDF
 
         elif status == True:
             print ("Database ready to use!")
@@ -237,9 +235,10 @@ class grid_model:
         # Copying QGis-Processing Scripts
             # Writing conn-File
         print ("Writing QGis-processing files...")
-        conn_str = """host=%s port=%s user=%s dbname=%s password=%s""" %(self.host,self.port,self.user,self.database,self.password)
+        conn_str = "host=%s port=%s user=%s dbname=%s password=%s" \
+            %(self.host,self.port,self.user,self.database,self.password)
 
-        if (sys.version_info > (3, 0)):
+        if (sys.version_info >= (3, 0)):
             # Python 3 open
             fh = open(qgis_processing_path + "conn.txt","w")
         else:
@@ -263,7 +262,7 @@ class grid_model:
     # Function to download OSM-Data
     # existing data is overwritten
     def download_osm_data(self, filename):
-        if (sys.version_info > (3, 0)):
+        if (sys.version_info >= (3, 0)):
             # Python 3 download
             urllib.request.urlretrieve("http://ftp5.gwdg.de/pub/misc/openstreetmap/download.geofabrik.de/germany-latest.osm.pbf", self.raw_data_dir + "/" + filename)
         else:
@@ -302,10 +301,16 @@ class grid_model:
 
         file_path = self.raw_data_dir + "/" + filename
 
+        # BUG: Python continues (and sets osm_metadata) even in case osmosis fails!!!
         proc = subprocess.Popen('%s --read-pbf %s --write-pgsql database=%s host=%s user=%s password=%s'
-                         %(self.osmosis_path, file_path, self.database, self.host, self.user, self.password), shell=True)
+                         %(self.osmosis_path, 
+                           file_path, 
+                           self.database, 
+                           self.osmosis_host, 
+                           self.user, 
+                           self.password), shell=True)
         print ('Importing OSM-Data...')
-        proc.wait() # To make sure Script waits until Osmosis is ready...
+        proc.wait()
 
         # After updating OSM-Data, power_tables (for editing) have to be updated as well
         print ("Creating power-tables...")
@@ -617,29 +622,25 @@ INSERT INTO transfer_busses (osm_id, object_type, center_geom)
 
 
 
-# Loads grid model if executed as script...
+## Loads grid model if executed as script...
 if __name__ == '__main__':
 
-    print ('osmTGmod started as Script')
+    print ('osmTGmod executed as Script')
     print ('Please provide connection-parameters:')
 
-    database = input('database name:')
-    password = input('password:')
-
-
-    print("Checking QGis processing path...")
+    database = input('Database name:')
+    password = input('Server password:')
 
     if os.path.exists(os.getenv("HOME") + "/.qgis2/processing/scripts/"):
         qgis_processing_path = os.getenv("HOME") + "/.qgis2/processing/scripts/"
-        print("QGis processing path: " + qgis_processing_path)
-    # The 'malte' Option is not needed. "HOME" should work fine...
+        # In case the processing path cannot be found it must be manually definded
     else:
         qgis_processing_path = input("No QGis processing path found! Provide QGis-Processing Path:")
 
-
-    host = input('host (default 192.168.0.46):') or '192.168.0.46'
+    host = input('host (default localhost):') or 'localhost' #'192.168.0.46'
     port = input('port (default 5432):') or '5432'
     user = input('user (default postgres):') or 'postgres'
+
 
     print ('Grid Model Object is created...')
     grid_model = grid_model(database, password, qgis_processing_path, host, port, user)
