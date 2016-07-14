@@ -970,6 +970,12 @@ UPDATE branch_data
 -- Erstellt innerhalb der Umspannwerke Tranformator-Leitungen, die die Substation-Knoten verbinden
 SELECT otg_connect_transformers ();
 
+-- Here, unused transfer busses are connected to the grid. 
+-- Needs to be done before branches are simplified, because...
+--...transfer busses are prefaribly connected to other busses.
+SELECT otg_transfer_busses ();
+
+
 	-- LEITUNGS ZUSAMMENFASSUNG
 	-- (Einige Leitungsabscnitte können mit dem Ziel die Berechnung zu Beschleunigen zusammengefasst werden)
 
@@ -1008,8 +1014,6 @@ ALTER TABLE branch_data DROP column ways;
 ALTER TABLE bus_data ADD COLUMN discovered BOOLEAN DEFAULT false;
 
 SELECT otg_graph_analysis (); -- If in Python Input graph_dfs is selected True, then disconnected graphs will be deleted
-
-SELECT otg_transfer_busses ();
 
 -- Erweitert branch_data um einfache Topologische Geometrie
 ALTER TABLE branch_data ADD COLUMN simple_geom GEOMETRY (LINESTRING, 4326);
