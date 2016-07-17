@@ -1774,6 +1774,8 @@ v_line_ids BIGINT [];
 v_circuit_ids BIGINT [];
 v_ways geometry (Linestring) [];
 
+v_branch_max_id BIGINT;
+
 BEGIN
 
 		
@@ -1812,6 +1814,7 @@ BEGIN
 
 	DELETE FROM bus_data WHERE id = v_vertex_id; -- LInes werden nicht automatisch mitgelöscht
 	DELETE FROM branch_data WHERE branch_data.f_bus = v_vertex_id OR branch_data.t_bus = v_vertex_id;
+	
 	INSERT INTO branch_data (	relation_id, 
 					line_ids,
 					length,
@@ -1823,7 +1826,7 @@ BEGIN
 					wires,
 					power,
 					ways)
-		SELECT 	v_circuit_ids [1], 
+		SELECT  v_circuit_ids [1], 
 			v_line_ids, 
 			v_length, 
 			v_f_bus_t_bus [1],
@@ -1928,39 +1931,57 @@ LANGUAGE plpgsql;
 
 	-- otg_transfer_busses ()
 	
--- This is the new tranfer-bus function (not ready)
+-- This is the new tranfer-bus function
 -- The old one can be used for the subgrid connection...
 
 CREATE OR REPLACE FUNCTION otg_transfer_busses () RETURNS void
 AS $$ 
 DECLARE
 
-v_buffer_size FLOAT;
+
 v_search_area geometry (Polygon, 4326);
 
 v_cnt INT;
 v_smallest_dist FLOAT;
 v_this_dist FLOAT;
+
 v_trans_bus_id BIGINT;
-v_substation_id BIGINT;
-
-
 v_trans_bus_geom geometry (Point, 4326);
-v_substation_geom geometry (Point, 4326);
-v_substation_voltage INT;
+v_branch_id BIGINT;
+v_branch_way geometry (Linestring, 4326);
+v_branch_voltage FLOAT;
+v_branch_f_bus BIGINT;
+v_branch_t_bus BIGINT;
+v_branch_cables INT;
+v_branch_power TEXT;
+v_branch_length FLOAT;
+
+v_transfer_bus_bus_data_id BIGINT;
 
 v_trans_bus RECORD;
-v_substation RECORD;
+v_branch RECORD;
+
+v_closest_point_loc FLOAT;
+v_closest_point_geom geometry (Point, 4326);
+
+v_new_connection_geom geometry (Linestring, 4326);
+v_new_connection_length FLOAT;
+
+v_new_way_geom_start geometry (Linestring, 4326);
+v_new_way_length_start FLOAT;
+v_new_way_geom_end geometry (Linestring, 4326);
+v_new_way_length_end FLOAT;
+
+v_closest_bus_id BIGINT;
 
 v_max_bus_id BIGINT;
 v_max_branch_id BIGINT;
+
 BEGIN
------------------------------
--- Fix this to aktivate...
----------------
-IF FALSE--(SELECT val_bool 
-	--FROM abstr_values
-	--WHERE val_description = 'transfer_busses') -- Only if transfer_busses is selected True (Python Script)
+
+IF (SELECT val_bool 
+	FROM abstr_values
+	WHERE val_description = 'transfer_busses') -- Only if transfer_busses is selected True (Python Script)
 	THEN
 
 	-- All the substations that are allready found can be ignored
@@ -1971,7 +1992,7 @@ IF FALSE--(SELECT val_bool
 		v_cnt := (SELECT count(*) FROM transfer_busses);
 		EXIT WHEN v_cnt = 0;
 
-		v_buffer_size := 100000; -- Initial buffer size in meters
+		v_smallest_dist := 500000; -- Initial buffer size in meters
 
 		-- Loops through all (left) transfer busses
 		FOR v_trans_bus IN
@@ -1982,73 +2003,214 @@ IF FALSE--(SELECT val_bool
 			-- Geography allows to set the buffer radius in meters.
 			-- ...Then casted back to geometry.
 			v_search_area := ST_Buffer(	v_trans_bus.center_geom::geography, 
-							v_buffer_size)::geometry;
+							v_smallest_dist)::geometry;
+							
 		
-		--------
-		-- From here on loop through all lines within the buffer (See Issue).
-		--------
-		
-		-- 	FOR v_substation IN
--- 				SELECT id, voltage, the_geom
--- 					FROM bus_data
--- 					WHERE 	frequency = 50 AND
--- 						NOT substation_id IS NULL -- Only substations no grid busses (Muffen)
--- 					ORDER BY voltage -- Will be conected with 110 preferred
--- 			LOOP
--- 				v_this_dist := ST_Distance(	v_trans_bus.center_geom, 
--- 								v_substation.the_geom);
--- 				IF (v_this_dist < v_smallest_dist)
--- 					THEN 
--- 					v_smallest_dist := v_this_dist;
--- 					v_trans_bus_id := v_trans_bus.osm_id;
--- 					v_trans_bus_geom := v_trans_bus.center_geom;
--- 					v_substation_id := v_substation.id;
--- 					v_substation_voltage := v_substation.voltage;
--- 					v_substation_geom := v_substation.the_geom;
--- 				END IF;
+		 	FOR v_branch IN
+				SELECT branch_id, voltage, way, f_bus, t_bus, cables, power, length
+					FROM branch_data
+					WHERE 	ST_Intersects(way, v_search_area) AND -- Just the lines/branches within that intersect the buffer
+						frequency = 50
+			LOOP
+
+				v_this_dist := ST_Distance(	v_trans_bus.center_geom::geography, 
+								v_branch.way::geography); -- in meters
+
+				
+				IF (v_this_dist < v_smallest_dist)
+					THEN 
+					v_smallest_dist := v_this_dist;
+					v_trans_bus_id := v_trans_bus.osm_id;
+					v_trans_bus_geom := v_trans_bus.center_geom;
+					v_branch_id := v_branch.branch_id;
+					v_branch_way := v_branch.way;
+					v_branch_voltage := v_branch.voltage;
+					v_branch_f_bus := v_branch.f_bus;
+					v_branch_t_bus := v_branch.t_bus;
+					v_branch_cables := v_branch.cables;
+					v_branch_power := v_branch.power;
+					v_branch_length := v_branch.length;
+
+				END IF;
 -- 				
--- 			END LOOP;
+			END LOOP;
 		END LOOP;
 
-		-- v_max_bus_id := (SELECT max(id) FROM bus_data);
--- 		INSERT INTO bus_data (	id, 
--- 					cnt, 
--- 					the_geom, 
--- 					voltage, 
--- 					frequency, 
--- 					substation_id, 
--- 					cntr_id)
--- 			VALUES (v_max_bus_id + 1, 
--- 				1,
--- 				v_trans_bus_geom,
--- 				v_substation_voltage,
--- 				50,
--- 				v_trans_bus_id,
--- 				'DE');
--- 				
--- 		v_max_branch_id := (SELECT max(branch_id) FROM branch_data);
--- 		INSERT INTO branch_data (	branch_id, 
--- 						length,
--- 						f_bus,
--- 						t_bus,
--- 						voltage,
--- 						cables,
--- 						frequency,
--- 						power,
--- 						multiline)
--- 			VALUES(	v_max_branch_id + 1,
--- 				v_smallest_dist,
--- 				v_max_bus_id + 1,
--- 				v_substation_id,
--- 				v_substation_voltage,
--- 				3,
--- 				50,
--- 				'cable',
--- 				ST_Multi(ST_MakeLine(	v_trans_bus_geom,
--- 							v_substation_geom)));
--- 		DELETE FROM transfer_busses
--- 			WHERE osm_id = v_trans_bus_id;
+		-- Here, all values for the new branches and busses are calculated
+		-- for new bus:
+		v_closest_point_loc := ST_LineLocatePoint(	v_branch_way, 
+								v_trans_bus_geom); --FLOAT between 0 and 1 (Point location on Linesting)
+
+		v_closest_point_geom := ST_LineInterpolatePoint(v_branch_way, 
+								v_closest_point_loc); -- Geometry of closest point
+
+		-- Checks if some bus is less than 75m away
+		v_closest_bus_id := NULL;
+		IF v_branch_length * v_closest_point_loc < 75
+			THEN
+			v_closest_bus_id := v_branch_f_bus;
+			END IF;
+		IF v_branch_length * (1 - v_closest_point_loc) < 75
+			THEN
+			v_closest_bus_id := v_branch_t_bus;
+			END IF;
+
+		-- In every case a new bus (transfer bus) needs to be added:
+		v_max_bus_id := (SELECT max(id) FROM bus_data);	
+
+		v_transfer_bus_bus_data_id := v_max_bus_id + 1;
+		INSERT INTO bus_data (	id, 
+					the_geom, 
+					voltage, 
+					frequency, 
+					substation_id, 
+					cntr_id)
+			VALUES (v_transfer_bus_bus_data_id, 
+				v_trans_bus_geom,
+				v_branch_voltage,
+				50,
+				v_trans_bus_id,
+				'DE');
+				
+		IF NOT v_closest_bus_id IS NULL --thus, there is a close bus/substation
+			THEN
+
+			v_new_connection_geom := ST_MakeLine(	v_trans_bus_geom, (SELECT the_geom 
+								FROM bus_data 
+								WHERE id = v_closest_bus_id));
+			v_new_connection_length := ST_Length(v_new_connection_geom::geography);
+			
+				--make new line here and use this distance!!!!	
+			v_max_branch_id := (SELECT max(branch_id) FROM branch_data);
+			INSERT INTO branch_data (	branch_id, 
+							length,
+							f_bus,
+							t_bus,
+							voltage,
+							cables,
+							frequency,
+							power,
+							way)
+				VALUES(	v_max_branch_id + 1,
+					v_new_connection_length,
+					v_transfer_bus_bus_data_id, --f_bus
+					v_closest_bus_id, --t_bus
+					v_branch_voltage, -- of the found branch
+					3,
+					50,
+					'cable',
+					v_new_connection_geom);
+				
+			
+		ELSE -- no direct connection to any bus...
+
+			--... the other bus represents the new grid-bus (Muffe)
+			INSERT INTO bus_data (	id, 
+						the_geom, 
+						voltage, 
+						frequency, 
+						substation_id, 
+						cntr_id)
+				VALUES (v_max_bus_id + 2, -- the new grid-bus
+					v_closest_point_geom,
+					v_branch_voltage,
+					50,
+					NULL,
+					'DE');
+										
+			-- for new (split-up) branches
+			v_new_way_geom_start := ST_Line_Substring(	v_branch_way, 
+									0, 
+									v_closest_point_loc); -- New line Substring (first part)
+									
+			v_new_way_length_start := ST_length(v_new_way_geom_start::geography);
+									
+			v_new_way_geom_end := ST_Line_Substring(	v_branch_way, 
+									v_closest_point_loc, 
+									1); -- New line Substring (second part)
+
+			v_new_way_length_end := ST_length(v_new_way_geom_end::geography);
+
+				
+			DELETE FROM branch_data WHERE branch_id = v_branch_id; -- Old branch needs to be deleted
+				
+			v_max_branch_id := (SELECT max(branch_id) FROM branch_data);
+			-- 3 branches are inserted: the 2 substrings, and the new one to connect the transfer bus:
+			
+			-- Start Substring Branch:
+			INSERT INTO branch_data (	branch_id, 
+							length,
+							f_bus,
+							t_bus,
+							voltage,
+							cables,
+							frequency,
+							power,
+							way)
+				VALUES(	v_max_branch_id + 1,
+					v_new_way_length_start,
+					v_branch_f_bus, --from old "from-bus" to new closest point
+					v_max_bus_id + 2, --the new grid bus
+					v_branch_voltage,
+					v_branch_cables,
+					50,
+					v_branch_power,
+					v_new_way_geom_start);
+
+			-- End Substring Branch:
+			INSERT INTO branch_data (	branch_id, 
+							length,
+							f_bus,
+							t_bus,
+							voltage,
+							cables,
+							frequency,
+							power,
+							way)
+				VALUES(	v_max_branch_id + 2,
+					v_new_way_length_end,
+					v_max_bus_id + 2, -- from new closest point to old "to-bus"
+					v_branch_t_bus,
+					v_branch_voltage,
+					v_branch_cables,
+					50,
+					v_branch_power,
+					v_new_way_geom_end);
+
+				
+			-- New branch (connection) from closest point to transfer bus
+			v_new_connection_geom := ST_MakeLine(	v_trans_bus_geom, 
+								v_closest_point_geom);
+			v_new_connection_length := ST_Length(v_new_connection_geom::geography);
+			
+			INSERT INTO branch_data (	branch_id, 
+							length,
+							f_bus,
+							t_bus,
+							voltage,
+							cables,
+							frequency,
+							power,
+							way)
+				VALUES(	v_max_branch_id + 3,
+					v_new_connection_length,
+					v_max_bus_id + 1,
+					v_max_bus_id + 2,
+					v_branch_voltage,
+					3,
+					50,
+					v_branch_power,
+					v_new_connection_geom);
+		END IF;
+				
+		DELETE FROM transfer_busses
+			WHERE osm_id = v_trans_bus_id;
 	END LOOP;
+
+	UPDATE bus_data 
+	SET cnt = (SELECT count (*) 
+			FROM branch_data 
+			WHERE branch_data.f_bus = bus_data.id OR branch_data.t_bus = bus_data.id);
 END IF;
 
 END
