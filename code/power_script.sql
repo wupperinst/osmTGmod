@@ -996,8 +996,9 @@ ALTER TABLE branch_data DROP column way;
 
 
 		-- ZUSAMMEFASSUNG VON BRANCHES
+
 		
-SELECT otg_simplify_branches_iteration ();
+--SELECT otg_simplify_branches_iteration ();
 
 
 		-- UMWANDLUNG DATENTYPEN
