@@ -85,16 +85,22 @@ class grid_model:
         elif platform.system() == "Linux" or platform.system() == "Linux2":
             self.platform = 'lin'
             print("Detected platform: Linux")
-
+        
+        elif platform.system().lower() == "win32" or platform.system().lower() == "windows":
+            self.platform = 'win'
+            print("Detected platform: Windows")
+            
         else:
             print("Detected platform: None")
 
 
         ## Osmosis Path and Activation
-        self.osmosis_path = os.getcwd() + '/osmosis/bin/osmosis' # The provided Osmosis Version is allways used
-        st = os.stat(self.osmosis_path)
-        os.chmod(self.osmosis_path, st.st_mode | stat.S_IEXEC) # Set the osmosis file as executable
-
+        if self.platform == 'win':
+            self.osmosis_path = os.getcwd() + '\\osmosis\\bin\\osmosis.bat' # The provided Osmosis Version is always used
+        else:
+            self.osmosis_path = os.getcwd() + '/osmosis/bin/osmosis' # The provided Osmosis Version is always used
+            st = os.stat(self.osmosis_path)
+            os.chmod(self.osmosis_path, st.st_mode | stat.S_IEXEC) # Set the osmosis file as executable
 
         ## Setting osmTGmod folder structure:
         print("Checking/Creating file directories")
@@ -631,11 +637,18 @@ if __name__ == '__main__':
     database = input('Database name:')
     password = input('Server password:')
 
-    if os.path.exists(os.getenv("HOME") + "/.qgis2/processing/scripts/"):
-        qgis_processing_path = os.getenv("HOME") + "/.qgis2/processing/scripts/"
-        # In case the processing path cannot be found it must be manually definded
+    if platform.system().lower() == "win32" or platform.system().lower() == "windows":
+        if os.path.exists(os.getenv("USERPROFILE") + "/.qgis2/processing/scripts/"):
+           qgis_processing_path = os.getenv("USERPROFILE") + "/.qgis2/processing/scripts/"
+           # In case the processing path cannot be found it must be manually definded
+        else:
+            qgis_processing_path = input("No QGis processing path found! Provide QGis-Processing Path:")
     else:
-        qgis_processing_path = input("No QGis processing path found! Provide QGis-Processing Path:")
+         if os.path.exists(os.getenv("HOME") + "/.qgis2/processing/scripts/"):
+            qgis_processing_path = os.getenv("HOME") + "/.qgis2/processing/scripts/"
+            # In case the processing path cannot be found it must be manually definded
+        else:
+            qgis_processing_path = input("No QGis processing path found! Provide QGis-Processing Path:")
 
     host = input('host (default localhost):') or 'localhost' #'192.168.0.46'
     port = input('port (default 5432):') or '5432'
