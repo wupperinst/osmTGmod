@@ -21,9 +21,7 @@
 ------------------------------------------------------------------------------------------------
 
 -- Konvention:
--- Alle Werte von Variablen sind in √ºblichen S.I. Einheiten, falls im Variablenname keine (abweichende) Einheit angegeben ist.
-
--- Malte 17.05.2016
+-- Alle Werte von Variablen sind in üblichen S.I. Einheiten, falls im Variablenname keine (abweichende) Einheit angegeben ist.
 
 -- DROP TABELLEN
 
@@ -34,10 +32,6 @@ DROP TABLE IF EXISTS power_line;
 DROP TABLE IF EXISTS power_substation;
 
 DROP TABLE IF EXISTS power_line_sep;
-
-DROP TABLE IF EXISTS base_MVA;
-DROP TABLE IF EXISTS voltage_levels;
-DROP TABLE IF EXISTS min_voltage;
 
 DROP TABLE IF EXISTS branch_data;
 DROP TABLE IF EXISTS bus_data;
@@ -54,25 +48,9 @@ DELETE FROM debug_vals;
 
 -- ERSTELLUNG ALLGEMEINER TABELLEN (DEKLARIERUNG EINIGER VARIABLEN)
 
--- ERSTELLEN DER TABELLE BASE_MVA
-
---Basis der sp√§teren p.u. Berechnungen
-CREATE TABLE base_MVA (base_MVA INT);
-INSERT INTO base_MVA VALUES (100);
-
-
--- ERSTELLEN DER TABELLE MIN_VOLTAGE
-
--- Alle Spannungen, die mindestens so gro√ü sind, wie min_voltage werden betrachtet
--- (Macht es Sinn eine Mindesspannung zu verwenden?)
--- Bei den Leitungskennwerten fehlen noch Werte f√ºr alle untersuchten Spannungen
-CREATE TABLE min_voltage (voltage INT);
-INSERT INTO min_voltage (voltage) VALUES (110000);
---INSERT INTO min_voltage (voltage) VALUES (220000);
---INSERT INTO min_voltage (voltage) VALUES (380000);
 
 	-- ERSTELLEN DER TOPOLOGIE-TABELLEN
-	-- (Diese werden sp√§ter mit der topologischen Netzstruktur gef√ºllt)
+	-- (Diese werden später mit der topologischen Netzstruktur gefüllt)
 
 		-- BUS_DATA	
 
@@ -112,11 +90,11 @@ CREATE INDEX branch_t_bus_idx ON branch_data (t_bus);
 
 
 	-- ERSTELLEN DER PROBLEM_LOG-TABELLE UND COUNT-LOG
-	-- (in diese Tabelle werden alle Probleme eingetragen, die explizit √ºber Trigger oder Inserts in diese Tabelle eingef√ºgt werden)
+	-- (in diese Tabelle werden alle Probleme eingetragen, die explizit über Trigger oder Inserts in diese Tabelle eingefügt werden)
 	
 CREATE TABLE problem_log (	object_type TEXT, -- Objekt-Typ des dargestellten Elements
 				line_id BIGINT [], -- Alle im Objekt enthaltenen lines (ways)
-				relation_id BIGINT, -- Relation_id des Objekts (0 f√ºr Branches, die aus ways stammen)
+				relation_id BIGINT, -- Relation_id des Objekts (0 für Branches, die aus ways stammen)
 				way geometry (MultiLineString, 4326), 
 				voltage INT,
 				cables INT,
@@ -129,20 +107,20 @@ CREATE TABLE problem_log (	object_type TEXT, -- Objekt-Typ des dargestellten Ele
 -- (Untersuchung aller in den OSM-ways enthaltenen Informationen)
 
 	-- ERSTELLEN DER TABELLE POWER_LINE	
-	-- (Diese Tabelle wird die way-Informationen √ºber Leitungen (Freileitungen und Kabel) enthalten)
+	-- (Diese Tabelle wird die way-Informationen über Leitungen (Freileitungen und Kabel) enthalten)
 SELECT *
 	INTO power_line
 	FROM power_ways_applied_changes
 	WHERE 	power = 'line' OR
 		power = 'cable';
 
--- Erstellt normalen Index auf ID und  spatial Index (r√§umlichen Index) auf way
+-- Erstellt normalen Index auf ID und  spatial Index (räumlichen Index) auf way
 CREATE INDEX power_line_id_idx ON power_line(id);
 CREATE INDEX power_line_way_gix ON power_line USING GIST (way);
 
 			
 	-- ERSTELLEN DER TABELLE POWER_SUBSTATION
-	-- (Diese Tabelle wird die way-Informationen √ºber Umspannwerke enthalten)
+	-- (Diese Tabelle wird die way-Informationen über Umspannwerke enthalten)
 
 SELECT *
 	INTO power_substation
@@ -152,17 +130,17 @@ SELECT *
 -- Erstellt einen normalen Index auf ID
 CREATE INDEX substation_id_idx ON power_substation(id);
 
--- Es werden diejenigen ways gel√∂scht, die kein Polygon darstellen k√∂nnen
+-- Es werden diejenigen ways gelöscht, die kein Polygon darstellen können
 -- (in der power_ways- Tabelle liegen alle wege als linestring vor)
 DELETE FROM power_substation WHERE ST_NumPoints (way) <= 3; -- Polygone brauchen mindestens 4 Punkte
 
 -- Aus der way-Spalte wird Geometrie polygon gemacht.
 ALTER TABLE power_substation ADD COLUMN poly geometry(Polygon, 4326);
 -- Aus Linestrings werden Polygone gemacht
--- (Um sicherzugehen, dass Linestrings geschlossen sind wird ihr Startpunk als Endpunkt hinzugef√ºgt)
+-- (Um sicherzugehen, dass Linestrings geschlossen sind wird ihr Startpunk als Endpunkt hinzugefügt)
 UPDATE power_substation 
 	SET poly = ST_MakePolygon(ST_AddPoint(way, ST_StartPoint(way))); 
--- Spalte way (linestrings) wird gel√∂scht
+-- Spalte way (linestrings) wird gelöscht
 ALTER TABLE power_substation DROP COLUMN way; 
 
 -- Macht einen spatial Index auf Geometriespalte poly
@@ -170,7 +148,7 @@ CREATE INDEX substation_poly_gix ON power_substation USING GIST (poly);
 
 
 	-- GEOMETRIE POWER_LINE
-	-- (Zun√§chst handelt es sich lediglich um geometrische Informationen - keine Topologie)
+	-- (Zunächst handelt es sich lediglich um geometrische Informationen - keine Topologie)
 
 -- Macht zwei neue Geometrie-Spalten, in die die Start- und Endpunkte eingetragen werden...
 ALTER TABLE power_line ADD COLUMN startpoint geometry (Point);
@@ -186,7 +164,7 @@ UPDATE power_line
 	endpoint = st_endpoint(way);
 
 
--- Es werden alle Leitungen gel√∂scht, die Anfang und Ende au√üerhalb Deutschlands haben.	
+-- Es werden alle Leitungen gelöscht, die Anfang und Ende außerhalb Deutschlands haben.	
 DELETE FROM power_line WHERE 	NOT id IN	(SELECT line.id 
 						FROM power_line line, nuts_poly
 						WHERE 	ST_Within(line.startpoint, nuts_poly.geom) AND
@@ -202,7 +180,7 @@ DELETE FROM power_line WHERE 	NOT id IN	(SELECT line.id
 
 
 
--- Macht eine neue Spalte, die die m√∂gliche Substation-ID der Start- und Endpunkte der Leitung erh√§lt.
+-- Macht eine neue Spalte, die die mögliche Substation-ID der Start- und Endpunkte der Leitung erhält.
 -- Untersuchung ob Anfangs- und Endpunkte der Leitungen innerhalb einer Substation liegen
 ALTER TABLE power_line ADD COLUMN point_substation_id BIGINT [2];
 UPDATE power_line SET 	point_substation_id [1] = (SELECT power_substation.id
@@ -214,7 +192,7 @@ UPDATE power_line SET 	point_substation_id [1] = (SELECT power_substation.id
 							WHERE ST_Within(endpoint, power_substation.poly)
 							LIMIT 1);
 
--- Alle Leitungen, die Anfang und Ende innerhalb einer Substation liegen werden gel√∂scht.							
+-- Alle Leitungen, die Anfang und Ende innerhalb einer Substation liegen werden gelöscht.							
 DELETE FROM power_line WHERE point_substation_id [1] = point_substation_id [2];	
 
 -- DELETE FROM power_line 
@@ -227,13 +205,13 @@ DELETE FROM power_line WHERE point_substation_id [1] = point_substation_id [2];
 --UPDATe power_line SET frequency = '0' WHERE id = 316867863
 
 -- Mach Neue Spalte mit Anzahl Spannungs-level...
--- ...und f√ºllt diese mit der Anzahl Voltage levels
+-- ...und füllt diese mit der Anzahl Voltage levels
 ALTER TABLE power_line ADD COLUMN numb_volt_lev INT;
 
 UPDATE power_line 
 	SET numb_volt_lev = otg_numb_of_cert_char (voltage, ';') + 1;
 	
--- Jede Zeile des ARRAYs (neue Spalte voltage_array) enth√§lt die Spannung der jeweiligen Leitungs-Ebene
+-- Jede Zeile des ARRAYs (neue Spalte voltage_array) enthält die Spannung der jeweiligen Leitungs-Ebene
 -- (Es werden die 4 oberen Leitungsebenen einer Leitung betrachtet)
 ALTER TABLE power_line ADD COLUMN voltage_array INT [4];
 CREATE INDEX volt_idx ON power_line(voltage_array);
@@ -244,9 +222,25 @@ UPDATE power_line
 	voltage_array [3] = otg_get_int_from_semic_string (voltage, 3), 
 	voltage_array [4] = otg_get_int_from_semic_string (voltage, 4);
 
+
+	-- ASSUMPTION
+	-- It is assumed that all 60kV voltages can be considered 110kV
+UPDATE power_line
+	SET
+	voltage_array [1] = 110000 WHERE voltage_array[1] = 60000;
+UPDATE power_line
+	SET
+	voltage_array [2] = 110000 WHERE voltage_array[2] = 60000;
+UPDATE power_line
+	SET
+	voltage_array [3] = 110000 WHERE voltage_array[3] = 60000;
+UPDATE power_line
+	SET
+	voltage_array [4] = 110000 WHERE voltage_array[4] = 60000;
+
 	
 		-- PROBLEM: NULL_voltage
-		-- (Es werden alle power_lines gel√∂scht, die keine Spannungsinformationen besitzen)
+		-- (Es werden alle power_lines gelöscht, die keine Spannungsinformationen besitzen)
 	
 	CREATE TRIGGER problem_log_trigger
 		AFTER DELETE ON power_line
@@ -265,13 +259,13 @@ UPDATE power_line
 	-- UNTERSUCHUNG CABLES
 
 -- Spalte cables_sum in die die aus cables (TEXT-Datentyp) stammenden Kabelsummen der Leitungen eingetragen wird
--- (Siehe Funktion otg_calc_sum_from_semic_string () f√ºr Verst√§ndnis der Berechnung)
+-- (Siehe Funktion otg_calc_sum_from_semic_string () für Verständnis der Berechnung)
 ALTER TABLE power_line ADD COLUMN cables_sum INT;
 UPDATE power_line
 	SET cables_sum = otg_calc_sum_from_semic_string (cables)
-	WHERE power = 'line'; -- F√ºr Kabel nicht definiert!
+	WHERE power = 'line'; -- Für Kabel nicht definiert!
 	
--- Neue Spalte cables_array, die √§hnlich voltage_array die Anzahl der Leiterseile pro Spannungsebene enth√§lt
+-- Neue Spalte cables_array, die ähnlich voltage_array die Anzahl der Leiterseile pro Spannungsebene enthält
 ALTER TABLE power_line ADD COLUMN cables_array INT [4];
 UPDATE power_line 
 	SET 
@@ -280,13 +274,13 @@ UPDATE power_line
 	cables_array [3] = otg_get_int_from_semic_string (cables, 3),
 	cables_array [4] = otg_get_int_from_semic_string (cables, 4)
 	WHERE 
-	numb_volt_lev - 1 = otg_numb_of_cert_char (cables, ';'); -- Dort, wo die Cables pro Spannungsebene genau identifizierbar sind (Anzahl ';' √ºbereinsimmen)
+	numb_volt_lev - 1 = otg_numb_of_cert_char (cables, ';'); -- Dort, wo die Cables pro Spannungsebene genau identifizierbar sind (Anzahl ';' übereinsimmen)
 
 	
 
 	-- UNTERSUCHUNG WIRES
 	
--- Neue Spalte wires_array, die √§hnlich voltage_array und cables_array die Anzahl der Leiterseile im B√ºndelleiter pro Spannungsebene enth√§lt
+-- Neue Spalte wires_array, die ähnlich voltage_array und cables_array die Anzahl der Leiterseile im Bündelleiter pro Spannungsebene enthält
 ALTER TABLE power_line ADD COLUMN wires_array INT [4];
 
 SELECT otg_read_wires ();
@@ -296,50 +290,50 @@ SELECT otg_read_wires ();
 	
 ALTER TABLE power_line ADD COLUMN frequency_array REAL [4]; 
 
--- Mit dieser Funktion wird die Frequenz (String-Spalte) in ein Frequenz-Array (Spannungsebenen) √ºberf√ºhrt.
+-- Mit dieser Funktion wird die Frequenz (String-Spalte) in ein Frequenz-Array (Spannungsebenen) überführt.
 -- Die Werte der Frequency werden nur verwertet, falls es nur einen Wert gibt (meist 50 Hz).
 -- Frequency-key stellt nur Auflistug dar (nicht zu Spannungsebenen zuzuordnen),...
--- ... daher: Alle weiteren Informationen m√ºssen von Relations kommen
+-- ... daher: Alle weiteren Informationen müssen von Relations kommen
 SELECT otg_read_frequency ();
 
 
 
 	-- UNTERSUCHUNG CIRCUITS
 	-- (In der Tabelle power_line enthaltene Stromkreis-Informationen)
-	-- (Diese Beschr√§nken sich idR. auf Erdkabel, da bei diesen die Anzahl "Leiterseile" f√ºr OSM-Mapper in diesem Fall nicht zu ermitteln ist)
+	-- (Diese Beschränken sich idR. auf Erdkabel, da bei diesen die Anzahl "Leiterseile" für OSM-Mapper in diesem Fall nicht zu ermitteln ist)
 
--- Die Informationen von circuits und cables werden bei Erdkabeln zusammengef√ºhrt...
--- ... Ein circuit ist dabei √§quivalent 2 oder 3 cables
+-- Die Informationen von circuits und cables werden bei Erdkabeln zusammengeführt...
+-- ... Ein circuit ist dabei äquivalent 2 oder 3 cables
 -- Der Circuit-Eintrag wird nur betrachtet, falls cables noch unbekannt ist
 -- (Cables ist damit der "wichtigere" Tag
 
--- Zuk√ºnftig k√∂nnte noch komplett aus Circuits umgestellt werden um diese als zentralen wert zu betrachten.
+-- Zukünftig könnte noch komplett aus Circuits umgestellt werden um diese als zentralen wert zu betrachten.
 -- Die Stromkreise werden kann nicht von den Cables, sondern der Anzahl Stromkreise abgezogen werden.
 
 SELECT otg_read_circuits ();
 
 
-	-- UNTERSUCHUNG LEITUNGSL√ÑNGE
+	-- UNTERSUCHUNG LEITUNGSLÄNGE
 
--- Neue Spalte (length) die tats√§chliche L√§nge in metern der Leiterseile (nicht Mastabst√§nde) enth√§lt
+-- Neue Spalte (length) die tatsächliche Länge in metern der Leiterseile (nicht Mastabstände) enthält
 ALTER TABLE power_line ADD COLUMN length real; 
--- Durch de Funktion st_length wird die L√§nge der Leitungen in m berechnet.
--- Hierf√ºr wird way ("geometry") in "geography" umgewandelt...
---... st_length erkennt geography-types (als WGS 84) und gibt Werte in m zur√ºck
--- Die von QGis (Visualisiertung) berechneten L√§ngen scheinen nicht zu stimmen
+-- Durch de Funktion st_length wird die Länge der Leitungen in m berechnet.
+-- Hierfür wird way ("geometry") in "geography" umgewandelt...
+--... st_length erkennt geography-types (als WGS 84) und gibt Werte in m zurück
+-- Die von QGis (Visualisiertung) berechneten Längen scheinen nicht zu stimmen
 UPDATE power_line
 	SET length = st_length(way::geography);
 	-- WHERE power = 'cable';
--- F√ºr alle Freileitungen wird eine mittleres Verh√§ltnis zwischen tats√§chlicher L√§nge und Mastabstand...
+-- Für alle Freileitungen wird eine mittleres Verhältnis zwischen tatsächlicher Länge und Mastabstand...
 -- ... (aufgrund von Seildurchhang) von 1.07 angenommen
--- F√ºr diesen Wert kann z.Z. keine Quelle gefunden werden		
+-- Für diesen Wert kann z.Z. keine Quelle gefunden werden		
 -- UPDATE power_line
 -- 	SET length = st_length(way::geography) * 1.07 --gilt so nicht!
 -- 	WHERE power = 'line';	
 	
 
 	-- UNTERSUCHUNG NACHBARSCHAFT
-	-- (Untersuchung der Nachbarschaft wird unternommen, um eindeutige Leitungsinformationen vollst√§ndig gemappter Leitungen an benachbarte Leitung mit fehlenden Eintr√§gen (mapping-Fehler) zu √ºbergeben)
+	-- (Untersuchung der Nachbarschaft wird unternommen, um eindeutige Leitungsinformationen vollständig gemappter Leitungen an benachbarte Leitung mit fehlenden Einträgen (mapping-Fehler) zu übergeben)
 	
 -- Neue Spalte (all_neighbours BIGINT ARRAY), in die alle geeignete Nachbarn eingetragen werden
 ALTER TABLE power_line ADD COLUMN all_neighbours BIGINT [4][2][10][2] -- Kann maximal 10 Nachbarn pro Spannungsebene aufnehmen
@@ -353,7 +347,7 @@ ALTER TABLE power_line ADD COLUMN all_neighbours BIGINT [4][2][10][2] -- Kann ma
 		{{NULL,NULL}, {NULL,NULL}, {NULL,NULL}, {NULL,NULL}, {NULL,NULL}, {NULL,NULL}, {NULL,NULL}, {NULL,NULL}, {NULL,NULL}, {NULL,NULL}}}}';
 CREATE INDEX all_neighbour_idx ON power_line(all_neighbours);
 
--- Nachbarn werden Frequenzunabh√§ngig zugeordnet...
+-- Nachbarn werden Frequenzunabhängig zugeordnet...
 UPDATE power_line SET all_neighbours = otg_get_all_neighbours (id);
 
 
@@ -364,10 +358,10 @@ UPDATE power_line SET all_neighbours = otg_get_all_neighbours (id);
 ALTER TABLE power_line ADD COLUMN cables_from_neighbour BOOLEAN;
 
 
--- Annahme-Algorithmen werden ausgef√ºhrt
--- Die Annahme-Algorithmen m√ºssen vor der Subtraktion durch die circuits stattfinden...
--- ... da diese Ver√§nderungen an den power_lines vornehmen
--- (Ein Problem, stellen hierbei z.B. cable=NULL eintr√§ge dar, bei denen keine cables abgezogen werden k√∂nnen...
+-- Annahme-Algorithmen werden ausgeführt
+-- Die Annahme-Algorithmen müssen vor der Subtraktion durch die circuits stattfinden...
+-- ... da diese Veränderungen an den power_lines vornehmen
+-- (Ein Problem, stellen hierbei z.B. cable=NULL einträge dar, bei denen keine cables abgezogen werden können...
 -- ... und damit auch cables_sum nicht eindeutig bleiben kann)
 
 SELECT otg_unknown_value_heuristic ();
@@ -399,7 +393,7 @@ ALTER TABLE power_circ_members
 	ADD CONSTRAINT circuit_members_fk foreign key (relation_id) references power_circuits (id) ON DELETE CASCADE;
 CREATE INDEX members_circuit_id_idx ON power_circ_members (relation_id);
 
--- Spaltenname meber_id ist irref√ºhrend dieser wird daher zu line_id umbenannt
+-- Spaltenname meber_id ist irreführend dieser wird daher zu line_id umbenannt
 ALTER TABLE power_circ_members RENAME COLUMN member_id TO line_id;
 
 
@@ -423,7 +417,12 @@ UPDATE power_circuits
 		wires = 	otg_get_int_from_wires_string (wires_text, 1),
 		circuits = 	otg_get_int_from_semic_string (circuits_text, 1),
 		frequency = 	otg_get_real_from_semic_string (frequency_text, 1);
-		
+
+-- ASSUMPTION
+-- It is assumed that all 60kV voltage levels can be considered 110kV
+UPDATE power_circuits
+	SET voltage = 110000 WHERE voltage = 60000;
+	
 ALTER TABLE power_circuits DROP COLUMN voltage_text;
 ALTER TABLE power_circuits DROP COLUMN cables_text;
 ALTER TABLE power_circuits DROP COLUMN wires_text;
@@ -435,35 +434,37 @@ ALTER TABLE power_circuits DROP COLUMN frequency_text;
  	-- MAXIMALE SPANNUNG
 
 
-	-- INFORMATIONS√úBERGABE POWER_LINE -> power_circ_members
-	-- (Ebenfalls um die Prozessierung zu erleichtern, werden den power_circ_members weitere Informationen √ºbergeben)
-	-- (Dies erm√∂glich unabh√§ngige Erstellung der Topologie)
+	-- INFORMATIONSÜBERGABE POWER_LINE -> power_circ_members
+	-- (Ebenfalls um die Prozessierung zu erleichtern, werden den power_circ_members weitere Informationen übergeben)
+	-- (Dies ermöglich unabhängige Erstellung der Topologie)
 	
--- Es werden diejenigen circuit Members gel√∂scht, die nicht in der power_line Tabelle auftreten...
--- ... (√ºber diese members gibt es keinen Informationen)
+-- Es werden diejenigen circuit Members gelöscht, die nicht in der power_line Tabelle auftreten...
+-- ... (über diese members gibt es keinen Informationen)
 DELETE FROM power_circ_members mem
 	WHERE mem.line_id NOT IN (SELECT id FROM power_line);	
 
 
 		-- PROBLEM: NULL_voltage
-		-- (L√∂scht alle power_circuits, die keine Spannungsinformation haben)
+		-- (Löscht alle power_circuits, die keine Spannungsinformation haben)
 
 	CREATE TRIGGER problem_log_trigger
 		AFTER DELETE ON power_circuits
 		FOR EACH ROW 
 		EXECUTE PROCEDURE otg_power_circuits_problem_tg ('NULL_voltage');
 
-		DELETE FROM power_circuits -- Impliziert Cascadenl√∂schung der Members... 
+		DELETE FROM power_circuits -- Impliziert Cascadenlöschung der Members... 
 			WHERE voltage IS NULL;
 			
 	DROP TRIGGER problem_log_trigger ON power_circuits;
 	
 
 	
--- L√∂scht alle power_circ_members, deren Spannung unter min_volt liegt.
--- (Bei den Subtraktionen (der Stromkreise von den Leitungen) werden die nicht untersuchten Spannugsebenen nicht ben√∂tigt)
+-- Löscht alle power_circ_members, deren Spannung unter min_volt liegt.
+-- (Bei den Subtraktionen (der Stromkreise von den Leitungen) werden die nicht untersuchten Spannugsebenen nicht benötigt)
 DELETE FROM power_circuits
-	WHERE voltage < (SELECT voltage FROM min_voltage); --NOT IN (SELECT voltage FROM voltage_levels);
+	WHERE voltage < (SELECT val_int 
+				FROM abstr_values 
+				WHERE val_description = 'min_voltage');
 
 		-- ANNAHME (frequency): 
 		-- Alle Stromkreise, die keinen Frequenzwert haben (und 220kv oder 380kv), bekommen frequency = 50
@@ -493,26 +494,26 @@ UPDATE power_circuits
 			cables = 4); -- Needs to be checked!
 
 	-- PROBLEM: NULL_frequency
-	-- (L√∂scht alle power_circuits, die keine Frequenz haben)
+	-- (Löscht alle power_circuits, die keine Frequenz haben)
 	CREATE TRIGGER problem_log_trigger
 		AFTER DELETE ON power_circuits
 		FOR EACH ROW 
 		EXECUTE PROCEDURE otg_power_circuits_problem_tg ('NULL_frequency');
 
-		DELETE FROM power_circuits -- Impliziert Cascadenl√∂schung der Members... 
+		DELETE FROM power_circuits -- Impliziert Cascadenlöschung der Members... 
 			WHERE frequency IS NULL;
 			
 	DROP TRIGGER problem_log_trigger ON power_circuits;
 
 -- 16.7 should not be deleted (at this point), because frequency info can be written in to power_lines, when substracting!!!
 -- 	-- PROBLEM: 16.7 frequency (not really a problem, just docu)
--- 	-- (L√∂scht alle power_circuits, die Frequenz = 16.7 haben)
+-- 	-- (Löscht alle power_circuits, die Frequenz = 16.7 haben)
 -- 	CREATE TRIGGER problem_log_trigger
 -- 		AFTER DELETE ON power_circuits
 -- 		FOR EACH ROW 
 -- 		EXECUTE PROCEDURE otg_power_circuits_problem_tg ('frequency=16.7');
 -- 
--- 		DELETE FROM power_circuits -- Impliziert Cascadenl√∂schung der Members... 
+-- 		DELETE FROM power_circuits -- Impliziert Cascadenlöschung der Members... 
 -- 			WHERE frequency = 16.7;
 -- 			
 -- 	DROP TRIGGER problem_log_trigger ON power_circuits;
@@ -520,12 +521,12 @@ UPDATE power_circuits
 	
 -- Annahme: Stromkreise, die keinen Cable-Eintrag haben (cables = NULL)
 -- bekommen bestimmte cables
--- (Es sind nun nurnoch circuit_members mit f√ºr das Modell gebrauchter Spannung enthalten)
+-- (Es sind nun nurnoch circuit_members mit für das Modell gebrauchter Spannung enthalten)
 UPDATE power_circuits
 	SET cables = 3
 	WHERE cables IS NULL AND
 	frequency = 50; 
--- ... Alle HG√ú-Leitungen ohne Cable-Eintrag bekommen cables = 2
+-- ... Alle HGÜ-Leitungen ohne Cable-Eintrag bekommen cables = 2
 UPDATE power_circuits
 	SET cables = 2
 	WHERE cables IS NULL AND
@@ -539,13 +540,13 @@ UPDATE power_circuits
 -- At this point, all circuit should have (valid) cable-information!	
 
 	-- PROBLEM: NULL_cables
-	-- (L√∂scht alle power_circuits, die keine Cable-Anzahl haben)
+	-- (Löscht alle power_circuits, die keine Cable-Anzahl haben)
 	CREATE TRIGGER problem_log_trigger
 		AFTER DELETE ON power_circuits
 		FOR EACH ROW 
 		EXECUTE PROCEDURE otg_power_circuits_problem_tg ('NULL_cables');
 
-		DELETE FROM power_circuits -- Impliziert Cascadenl√∂schung der Members... 
+		DELETE FROM power_circuits -- Impliziert Cascadenlöschung der Members... 
 			WHERE cables IS NULL;
 			
 	DROP TRIGGER problem_log_trigger ON power_circuits;
@@ -553,9 +554,9 @@ UPDATE power_circuits
 
 	-- ENT-NORMALISIERUNG POWER_CIRCUITS
 	-- (Um die Prozessierung der Daten zu vereinfachen wird die Tabelle entnormalisiert...
-	-- ... d.h. den power_circ_members werden Informationen der √ºbergeordneten Tabelle power_circuits √ºbergeben)
+	-- ... d.h. den power_circ_members werden Informationen der übergeordneten Tabelle power_circuits übergeben)
 			
--- length, way und power wird f√ºr alle circuit_members aus der Tabelle power_line √ºbernommen
+-- length, way und power wird für alle circuit_members aus der Tabelle power_line übernommen
 ALTER TABLE power_circ_members ADD COLUMN length real;
 ALTER TABLE power_circ_members ADD COLUMN way geometry(LINESTRING);
 ALTER TABLE power_circ_members ADD COLUMN power text;
@@ -584,28 +585,30 @@ UPDATE power_circ_members
 
 
 -- Circuits-Tag braucht bei Stromkreisen nicht untersucht werden, 
--- ...da diese nach Konvention genau einen Stromkreis repr√§sentieren.
+-- ...da diese nach Konvention genau einen Stromkreis repräsentieren.
 
 
--- Es werden diejenigen circuits gel√∂scht, die keine Members mehr haben
+-- Es werden diejenigen circuits gelöscht, die keine Members mehr haben
 DELETE FROM power_circuits 
 	WHERE id NOT IN (SELECT relation_id FROM power_circ_members);
 
 
 -- CIRCUIT TOPOLOGIE
--- (Unabh√§ngige Untersuchung der Topologie der Stromkreise (power_relation_members))
+-- (Unabhängige Untersuchung der Topologie der Stromkreise (power_relation_members))
 
 
--- Die neuen Spalten f_bus und t_bus werden f√ºr die Berechnung der Topologie ben√∂tigt
+-- Die neuen Spalten f_bus und t_bus werden für die Berechnung der Topologie benötigt
 ALTER TABLE power_circ_members ADD COLUMN f_bus BIGINT;
 ALTER TABLE power_circ_members ADD COLUMN t_bus BIGINT;
 
 -- Hier werden die Topologien der noch vorhandenen Spannungen berechnet.
--- Dabei werden alle circuits zun√§chst einzeln durchgegangen und deren Topologie wird unabh√§ngig berechnet
+-- Dabei werden alle circuits zunächst einzeln durchgegangen und deren Topologie wird unabhängig berechnet
 -- Vertices werden in die Tabelle bus_data geschrieben...
 -- Die Sortierung anch Spannung und Frequenz ist an dieser Stelle irelevant, da ohnehin Realtions-weise gerechnet wird.
--- Aufteilen der Tabelle 'power_circ_members' um DB-Servern mit wenig RAM oder wenigen max_locks_per transaction die Berechnung zu erm√∂glichen.
+-- Aufteilen der Tabelle 'power_circ_members' um DB-Servern mit wenig RAM oder wenigen max_locks_per transaction die Berechnung zu ermöglichen.
 
+-- The Split does good things, but is not beautiful!
+-- Nessesary for memory reasons
 SELECT otg_split_table('power_circ_members', 'relation_id');
 
 SELECT otg_create_grid_topology ('split_table_1');
@@ -619,7 +622,7 @@ SELECT otg_create_grid_topology ('split_table_8');
 SELECT otg_create_grid_topology ('split_table_9');
 SELECT otg_create_grid_topology ('split_table_10');
 
--- Nach der Berechnung wird die Tabelle wieder zusammengef√ºgt
+-- Nach der Berechnung wird die Tabelle wieder zusammengefügt
 ALTER TABLE split_table_1 RENAME TO power_circ_members;
 INSERT INTO power_circ_members SELECT * FROM split_table_2;
 INSERT INTO power_circ_members SELECT * FROM split_table_3;
@@ -631,7 +634,7 @@ INSERT INTO power_circ_members SELECT * FROM split_table_8;
 INSERT INTO power_circ_members SELECT * FROM split_table_9;
 INSERT INTO power_circ_members SELECT * FROM split_table_10;
 
--- Und die nicht ben√∂tigten Tabellen werden wieder gel√∂scht
+-- Und die nicht benötigten Tabellen werden wieder gelöscht
 DROP TABLE IF EXISTS split_table_1;
 DROP TABLE IF EXISTS split_table_2;
 DROP TABLE IF EXISTS split_table_3;
@@ -644,25 +647,25 @@ DROP TABLE IF EXISTS split_table_9;
 DROP TABLE IF EXISTS split_table_10;
 
 -- Neue Spalte origin in Tabelle bus_data soll kennzeichnen, das die bis jetzt in bus_data eingetragenen Knoten aus den Stromkreisinformationen stammen (origin = 'rel')
--- Die Knoten aus den (√ºberbleibenden) power_lines wird auch in diese Knotentabelle gespeichert (origin = 'lin')
+-- Die Knoten aus den (überbleibenden) power_lines wird auch in diese Knotentabelle gespeichert (origin = 'lin')
 ALTER TABLE bus_data ADD COLUMN origin character varying (3);
 UPDATE bus_data SET origin = 'rel';
 
 
-	-- KNOTENUNTERSUCHUNG UND L√ñSCHUNG OFFENER ENDEN
+	-- KNOTENUNTERSUCHUNG UND LÖSCHUNG OFFENER ENDEN
 	
 -- Berechnet die Anzahl der Links pro Knoten in der bus_data Tabelle
 SELECT otg_set_count ('power_circ_members', 'rel');
--- Diese L√∂schung nochmal √ºberdenken!!
+-- Diese Löschung nochmal überdenken!!
 	-- PROBLEM cnt_>_2
-	-- (An dieser Stelle werden diejenigen circuits gel√∂scht, die mindestens an einem Knoten cnt>2 haben.
-	-- Denn oft sind die circuits dann falsch gemappt (insbesondere in der N√§he der Substations)
+	-- (An dieser Stelle werden diejenigen circuits gelöscht, die mindestens an einem Knoten cnt>2 haben.
+	-- Denn oft sind die circuits dann falsch gemappt (insbesondere in der Nähe der Substations)
 	CREATE TRIGGER problem_log_trigger
 		AFTER DELETE ON power_circuits
 		FOR EACH ROW 
 		EXECUTE PROCEDURE otg_power_circuits_problem_tg ('branch_off_(cables_>_3)');
-		-- Die in das Log eingetragenen Werte f√ºr z.B. cables sind die aus der Datenbanke erhaltenen Werte (und nicht die √ºber Annahmen ver√§nderten)
-		-- auch bei cables = 3 f√ºhrt branch off oft zu fehlern!!!!
+		-- Die in das Log eingetragenen Werte für z.B. cables sind die aus der Datenbanke erhaltenen Werte (und nicht die über Annahmen veränderten)
+		-- auch bei cables = 3 führt branch off oft zu fehlern!!!!
 	DELETE FROM power_circuits 
 		WHERE 	--cables > 3 AND 
 			id IN (SELECT relation_id FROM power_circ_members 
@@ -672,39 +675,39 @@ SELECT otg_set_count ('power_circ_members', 'rel');
 
 	DROP TRIGGER problem_log_trigger ON power_circuits;
 
--- Neue Spalte, die die L√§nderkennung des Knotens enth√§lt
--- (wird druch otg_bus_analysis () gef√ºllt)
+-- Neue Spalte, die die Länderkennung des Knotens enthält
+-- (wird druch otg_bus_analysis () gefüllt)
 ALTER TABLE bus_data ADD COLUMN cntr_id character varying (2);
 
 -- Macht allgemeine Knotenuntersuchung
---(setzt L√§nderkennung, substation_id und Offene Enden im Ausland bekommen Substation_id = 0)
+--(setzt Länderkennung, substation_id und Offene Enden im Ausland bekommen Substation_id = 0)
 SELECT otg_bus_analysis ('rel');
 
 
--- Heuristik: Funktion otg_connect_dead_ends_with_substation () versucht offene Stromkreisendenin der N√§he von Umspannwerken √ºber Puffer zu schlie√üen
+-- Heuristik: Funktion otg_connect_dead_ends_with_substation () versucht offene Stromkreisendenin der Nähe von Umspannwerken über Puffer zu schließen
 SELECT otg_connect_dead_ends_with_substation ();
 
--- L√∂scht alle circuit_members, die (nun aufgrund des Puffers) Anfang und Ende innerhalb derselben Substation haben
--- (Dies kann bei Leitungen die f√§lschlicherweise so gemappt sind, dass mit einem Ende innerhalb eines Umspannwerks liegen, das andere jedoch offen, aber in der N√§he derselbe Umspannstation liegt (Mapping-Fehler))
+-- Löscht alle circuit_members, die (nun aufgrund des Puffers) Anfang und Ende innerhalb derselben Substation haben
+-- (Dies kann bei Leitungen die fälschlicherweise so gemappt sind, dass mit einem Ende innerhalb eines Umspannwerks liegen, das andere jedoch offen, aber in der Nähe derselbe Umspannstation liegt (Mapping-Fehler))
 DELETE FROM power_circ_members 
 	WHERE 	(SELECT substation_id FROM bus_data WHERE id = power_circ_members.f_bus) =  
 		(SELECT substation_id FROM bus_data WHERE id = power_circ_members.t_bus);
 		
--- Es k√∂nnen aufgrund von Mappingfehlern power_circ_members auftreten, die Anfang und Ende im selben Punkt besitzen
--- ... diese werden gel√∂scht
+-- Es können aufgrund von Mappingfehlern power_circ_members auftreten, die Anfang und Ende im selben Punkt besitzen
+-- ... diese werden gelöscht
 DELETE FROM power_circ_members WHERE f_bus = t_bus;
 
 
 	-- PROBLEM dead_end
-	-- Es werden alle Stromkreise gel√∂scht, die irgendwo ein offenes Ende haben 
-	-- Dies ist notwendig, da bei einer teilweisen L√∂schung falsche Stromkreise entstehen k√∂nnten
+	-- Es werden alle Stromkreise gelöscht, die irgendwo ein offenes Ende haben 
+	-- Dies ist notwendig, da bei einer teilweisen Löschung falsche Stromkreise entstehen könnten
 	CREATE TRIGGER problem_log_trigger
 		AFTER DELETE ON power_circuits
 		FOR EACH ROW 
 		EXECUTE PROCEDURE otg_power_circuits_problem_tg ('dead_end');
 
 	SELECT otg_set_count ('power_circ_members', 'rel');
-	-- Sobald bei einer Relation ein offenes Ende festegestellt wird, wird diese gel√∂scht
+	-- Sobald bei einer Relation ein offenes Ende festegestellt wird, wird diese gelöscht
 	DELETE FROM power_circuits -- On delete cascade
 		WHERE id IN (SELECT relation_id FROM power_circ_members 
 				WHERE 	(f_bus IN (SELECT id FROM bus_data 
@@ -718,26 +721,26 @@ DELETE FROM power_circ_members WHERE f_bus = t_bus;
 	DROP TRIGGER problem_log_trigger ON power_circuits;
 
 
--- Anschlie√üend werden alle Knoten gel√∂scht, an die aufgrund der Sromkreis-L√∂schung keine Leitungen mehr angeschlossen sind	
+-- Anschließend werden alle Knoten gelöscht, an die aufgrund der Sromkreis-Löschung keine Leitungen mehr angeschlossen sind	
 SELECT otg_set_count ('power_circ_members', 'rel');
 DELETE FROM bus_data WHERE origin = 'rel' AND cnt = 0; 
 
 
 -- SUBTRAKTION DER STROMKREISE (power_circ_members) VON DEN LEITUNGEN (POWER_LINES)
--- Die in den power_circ_members enthaltenen Informationen werden genutzt und quasi √ºber die Leitungen "gelegt"
+-- Die in den power_circ_members enthaltenen Informationen werden genutzt und quasi über die Leitungen "gelegt"
 -- ... bzw. von diesen subtrahiert
--- Frequenz kann hier zun√§chst unber√ºcksichtigt bleiben. Die abgezogenen Leitungen haben ja ihre Frequenz in den power_circuits
+-- Frequenz kann hier zunächst unberücksichtigt bleiben. Die abgezogenen Leitungen haben ja ihre Frequenz in den power_circuits
 
 -- Ist die Spannung des Stromkreises auf der Leitung nicht vorhanden (Mappingfehler) wird in problem_log geschrieben
 -- Grundlegend wird den Stromkreisspannung mehr "vertraut" als den Leitungsspannungen
--- Frequenzen k√∂nnen von circuits unter bestimmten Bedingungn in power_lines geschrieben werden.
+-- Frequenzen können von circuits unter bestimmten Bedingungn in power_lines geschrieben werden.
 SELECT otg_substract_circuits() ;
 
 
--- Durch den Puffer (otg_connect_dead_ends_with_substation) "√úbergangene" Leitungen (Tabelle power_line) werden angepasst.
+-- Durch den Puffer (otg_connect_dead_ends_with_substation) "Übergangene" Leitungen (Tabelle power_line) werden angepasst.
 -- Dies kann erst an dieser Stelle geschehen, damit nicht unkontrolliert cables von den power_line abgezogen werden
--- (sondern nur die bis hier √ºberbleibenden betrachtet werden)
--- Zudem k√∂nnen f√ºr das "Abziehen" verantwortliche Stromkreise evtl. gel√∂scht werden (z.B. wegen dead end).
+-- (sondern nur die bis hier überbleibenden betrachtet werden)
+-- Zudem können für das "Abziehen" verantwortliche Stromkreise evtl. gelöscht werden (z.B. wegen dead end).
 SELECT otg_substract_cables_within_buffer (id) FROM bus_data WHERE buffered = true AND origin = 'rel'; -- Also alle erfolgreichen Buffer
 
 
@@ -745,7 +748,7 @@ SELECT otg_substract_cables_within_buffer (id) FROM bus_data WHERE buffered = tr
 	-- wieder nach oben packen!!!
 	-- Cable conflict sollte noch verbessert werden (und in Summenfehler und Nachabarschaftsfehler aufgeteilt werden)
 	-- (Ein Problem wird gemeldet, sobald Leitungs-Nachabarschafts-Informationen nicht konsistent sind)
-	-- Dies kann Gr√ºnde wie falsches Mapping der ways (Anzahl cables) oder falschen Mapping der Relations haben 
+	-- Dies kann Gründe wie falsches Mapping der ways (Anzahl cables) oder falschen Mapping der Relations haben 
 	INSERT INTO problem_log (	object_type,
 					line_id,
 					relation_id,
@@ -758,50 +761,58 @@ SELECT otg_substract_cables_within_buffer (id) FROM bus_data WHERE buffered = tr
 					
 		SELECT 'power_line', ARRAY [id], NULL, ST_Multi(way), NULL, NULL, NULL, NULL, 'cable_conflict'
 		FROM power_line
-		WHERE otg_check_cable_conflict (id) AND voltage_array [1]>= (SELECT voltage FROM min_voltage);
+		WHERE otg_check_cable_conflict (id) AND voltage_array [1]>= (SELECT val_int 
+										FROM abstr_values 
+										WHERE val_description = 'min_voltage');
 
 
 
 
 -- DATENUMWANDLUNG UND TOPOLOGIE POWER_LINE
--- (Unabh√§ngige Untersuchung der einzelnen Spannungsebenen)
+-- (Unabhängige Untersuchung der einzelnen Spannungsebenen)
 
 	-- ERSTELLEN DER ZWISCHENTABELLE power_line_sep
 	
 CREATE TABLE power_line_sep AS SELECT * FROM branch_data LIMIT 0; 
 -- Aufgetrennte power_lines werden in power_line_sep geschrieben
--- Lines bekommen Relation_id = 0			
+-- Lines bekommen Relation_id = 0
+
+-- These columns are still needed for separation of continuous lines	
+ALTER TABLE power_line_sep ADD COLUMN startpoint geometry (Point);
+ALTER TABLE power_line_sep ADD COLUMN endpoint geometry (Point); 
+	
 SELECT otg_seperate_voltage_levels ();
 --DROP TABLE power_line;
 
-
-	-- L√ñSCHUNGEN
+	-- LÖSCHUNGEN
 	
--- Es werden branches gel√∂scht, deren Spannung nicht Untersucht werden soll
+-- Es werden branches gelöscht, deren Spannung nicht Untersucht werden soll
 DELETE FROM power_line_sep 
-	WHERE 	voltage < (SELECT voltage FROM min_voltage); --NOT IN (SELECT voltage FROM voltage_levels); 
+	WHERE 	voltage < (SELECT val_int 
+				FROM abstr_values 
+				WHERE val_description = 'min_voltage'); --NOT IN (SELECT voltage FROM voltage_levels); 
 	
 		-- PROBLEM: Missing Cables
-		-- (Es werden diejenigen power_line_sep gel√∂scht, die cables IS NULL aufweisen)
+		-- (Es werden diejenigen power_line_sep gelöscht, die cables IS NULL aufweisen)
 	CREATE TRIGGER problem_log_trigger
 		AFTER DELETE ON power_line_sep
 		FOR EACH ROW 
 		EXECUTE PROCEDURE otg_power_line_as_branch_problem_tg ('missing_cables');
 
-	DELETE FROM power_line_sep  --Problemlos solange (zuf√§lligerweise) die dar√ºberliegenden circuits alle Cables abdecken (Es kann aber eben auch sein, dass circuits fehlen und daher noch cables √ºbrig w√§ren)
-		WHERE 	cables IS NULL; -- Sp√§ter noch Circuit beachten und besser machen!!!
+	DELETE FROM power_line_sep  --Problemlos solange (zufälligerweise) die darüberliegenden circuits alle Cables abdecken (Es kann aber eben auch sein, dass circuits fehlen und daher noch cables übrig wären)
+		WHERE 	cables IS NULL; -- Später noch Circuit beachten und besser machen!!!
 
 	DROP TRIGGER problem_log_trigger ON power_line_sep;
 
 
--- L√∂scht diejenigen power_line_sep, die cables = 0 aufweisen. 
--- Dies Stellt kein Problem dar, da es sich um "√úberlagerung" durch Stromkreise handeln kann.
+-- Löscht diejenigen power_line_sep, die cables = 0 aufweisen. 
+-- Dies Stellt kein Problem dar, da es sich um "Überlagerung" durch Stromkreise handeln kann.
 DELETE FROM power_line_sep 
 	WHERE 	cables = 0; 
 
 		-- PROBLEM: too_many_circuits_on_power_line
-		-- (Es werden diejenigen power_line_sep gel√∂scht, die cables < 0 aufweisen) 
-		-- (Diese wurden von zu vielen Stromkreisen √ºberlagert).
+		-- (Es werden diejenigen power_line_sep gelöscht, die cables < 0 aufweisen) 
+		-- (Diese wurden von zu vielen Stromkreisen überlagert).
 	CREATE TRIGGER problem_log_trigger
 		AFTER DELETE ON power_line_sep
 		FOR EACH ROW 
@@ -814,10 +825,10 @@ DELETE FROM power_line_sep
 
 	
 -- Annahme: Alle noch unbekannten Frequenzen der Spannugnen 220 und 380kv werden 50Hz gesetzt
--- Da mehrer Frequenzen pro Freileitung vom Tag her nicht ber√ºcksichtigt werden k√∂nnen, kann an dieser Stelle ein Fehler
+-- Da mehrer Frequenzen pro Freileitung vom Tag her nicht berücksichtigt werden können, kann an dieser Stelle ein Fehler
 -- entstehen. 
 -- 16.7 hz liegen i.d.R. auf 110kV.
--- Problematisch sind zuk√ºnfig geplante HG√ú Leitungen gemeinsam mit 50Hz auf einer Freileitung 
+-- Problematisch sind zukünfig geplante HGÜ Leitungen gemeinsam mit 50Hz auf einer Freileitung 
 UPDATE power_line_sep 
 	SET frequency = 50
 	WHERE 	frequency IS NULL 
@@ -842,7 +853,7 @@ UPDATE power_line_sep
 		(	cables = 2 OR 
 			cables = 4); 
 		
--- Alle noch √ºbekannten Frequenzen werden 50Hz gesetzt.
+-- Alle noch übekannten Frequenzen werden 50Hz gesetzt.
 UPDATE power_line_sep
 	SET frequency = 50 
 	WHERE frequency IS NULL; -- this needs to be checked
@@ -850,7 +861,7 @@ UPDATE power_line_sep
 
 -- I will give it a try and leave 16.7 inside till the end...
 -- 		-- PROBLEM: frequency=16.7 (not really a problem, just docu)
--- 		-- (Es werden diejenigen power_line_sep gel√∂scht, die frequency = 16.7 aufweisen) 
+-- 		-- (Es werden diejenigen power_line_sep gelöscht, die frequency = 16.7 aufweisen) 
 -- 	CREATE TRIGGER problem_log_trigger
 -- 		AFTER DELETE ON power_line_sep
 -- 		FOR EACH ROW 
@@ -865,34 +876,39 @@ UPDATE power_line_sep
 	-- TOPOLOGIE
 	-- (Hier werden die Topologien der Spannungsebenen berechnet)
 
+
 -- Knoteninformationen werde wieder in Tabelle bus_data geschrieben
--- An dieser Stelle sollte evtl. noch nach Frequenzen getrennt werden (damit sich √ºbernander liegende HG√ú und Drehstromleitung nicht verbinden k√∂nnen)
+-- An dieser Stelle sollte evtl. noch nach Frequenzen getrennt werden (damit sich übernander liegende HGÜ und Drehstromleitung nicht verbinden können)
 -- (dies ist kein Problem, solange Circuits gut gemappt sind)
 SELECT otg_create_grid_topology ('power_line_sep');
 -- Die neu hinzugekommenen Knoten (von power_lines) werden mit origin = 'lin' gekennzeichnet
 UPDATE bus_data SET origin = 'lin' WHERE origin IS NULL;
 
--- Anzahl der Leitungen pro Knoten wird gez√§hlt
+-- Anzahl der Leitungen pro Knoten wird gezählt
 SELECT otg_set_count ('power_line_sep', 'lin');
 
 -- S.o. (bei power_circuits) - Analyse der neuen Knoten
 SELECT otg_bus_analysis ('lin');
 
+-- This function connects dead ends that are close to a transmission line...
+-- to one of the transmission line vertices. 
+-- Until now this is quick and dirty and needs to be improved.
+SELECT otg_connect_dead_ends_to_cont_lines ();
 
 	-- PROBLEM: dead_end
-	-- (bei den noch √ºberbleibendne power_lines werden diejenigen iterativ gel√∂scht, die ein offenes Ende haben)
+	-- (bei den noch überbleibendne power_lines werden diejenigen iterativ gelöscht, die ein offenes Ende haben)
 	-- (Diese Leitungen stellen keine realistischen Netzabschnitte dar)
 	CREATE TRIGGER problem_log_trigger
 		AFTER DELETE ON power_line_sep
 		FOR EACH ROW 
 		EXECUTE PROCEDURE otg_power_line_as_branch_problem_tg ('dead_end');
 		
--- L√∂scht iterativ Leitungen mit offenem End
+-- Löscht iterativ Leitungen mit offenem End
 SELECT otg_cut_off_dead_ends_iteration ('power_line_sep', 'lin'); 
 
 	DROP TRIGGER problem_log_trigger ON power_line_sep;
 
--- Alle nun nicht mehr verbundenen Knoten werden gel√∂scht.
+-- Alle nun nicht mehr verbundenen Knoten werden gelöscht.
 SELECT otg_set_count ('power_line_sep', 'lin');
 DELETE FROM bus_data WHERE origin = 'lin' AND cnt = 0;
 
@@ -929,39 +945,39 @@ INSERT INTO  branch_data (	relation_id,
 		FROM power_line_sep ;
 
 
--- Die folgenden Tabellen werden nicht mehr ben√∂tigt
--- (Alle f√ºr das Netzmodell ben√∂tigten Informationen wurden in branch_data und bus_data vereinigt)
-DROP TABLE power_circ_members;
-DROP TABLE power_circuits;
-DROP TABLE power_line_sep;
--- Die Spalten buffered und origin sind nur f√ºr Prozessierung von Bedeutung und k√∂nnen gel√∂cscht werden
+-- Die folgenden Tabellen werden nicht mehr benötigt
+-- (Alle für das Netzmodell benötigten Informationen wurden in branch_data und bus_data vereinigt)
+--DROP TABLE power_circ_members;
+--DROP TABLE power_circuits;
+--DROP TABLE power_line_sep;
+-- Die Spalten buffered und origin sind nur für Prozessierung von Bedeutung und können gelöcscht werden
 ALTER TABLE bus_data DROP COLUMN buffered;
 ALTER TABLE bus_data DROP COLUMN origin;
 
 
 -- ANNAHMEN / UMSPANNWERKE / VEREINFACHUNGEN BRANCH DATA
--- (Die Branch-Informationen sind noch nicht vollst√§ndig, bzw. Leitungsabschnitte k√∂nnen vereinfacht werden...)
+-- (Die Branch-Informationen sind noch nicht vollständig, bzw. Leitungsabschnitte können vereinfacht werden...)
 
 	-- ANNAHMEN
 
--- F√ºllt alle noch nicht bekannten Wires der 380kv, 220kv und 110kV Spannungsebene mit 4, 2 bzw. 1 wires.
+-- Füllt alle noch nicht bekannten Wires der 380kv, 220kv und 110kV Spannungsebene mit 4, 2 bzw. 1 wires.
 -- (Bei frequenz von 50) 
 -- Alle weiteren noch unbekannten wires von power = 'line' bekommen wires = 1
 SELECT otg_wires_assumption ();
 
 	-- BETRACHTETE FREQUENZEN / ANZAHL CABLE
 
--- Es werden alle nicht betrachteten Frequenzen (nicht 50 oder 0 HZ) gel√∂scht.
+-- Es werden alle nicht betrachteten Frequenzen (nicht 50 oder 0 HZ) gelöscht.
 -- Here, 16.7Hz (train) transmission lines (branches) are deleted
 DELETE FROM branch_data WHERE 	frequency != 50 AND 
 				frequency != 0;
 
 -- Cables<=1 wird von otg_calc_branch_specifications nicht als System betrachtet und 
 -- Bekommt dahe Anzahl Systeme = 0. 
--- Dies f√ºhrt zur Division durch 0
+-- Dies führt zur Division durch 0
 DELETE FROM branch_data WHERE cables <= 1;
 
--- ... und die dazugeh√∂rigen Busses m√ºssen ebenfalls gel√∂scht werden
+-- ... und die dazugehörigen Busses müssen ebenfalls gelöscht werden
 DELETE FROM bus_data WHERE 	NOT id IN (SELECT f_bus FROM branch_data) AND
 				NOT id IN (SELECT t_bus FROM branch_data);
 
@@ -971,10 +987,10 @@ DELETE FROM bus_data WHERE 	NOT id IN (SELECT f_bus FROM branch_data) AND
 	-- VERSCHALTUNG UMSPANNWERKE
 	-- (In diesem Abschnitt wird die Verschaltung in den Umspannwerken modelliert, sowie Transformatoren eingesetzt)
 	
--- √Ñndert die Topologie, sodass Alle Punkte innerhalb einer Substation (je Spannungsebene) zu einem vereinigt werden
-SELECT otg_connect_substation_vertices(); -- f√ºr au√üerhalb Deutschland ignoriert
+-- Ändert die Topologie, sodass Alle Punkte innerhalb einer Substation (je Spannungsebene) zu einem vereinigt werden
+SELECT otg_connect_substation_vertices(); -- für außerhalb Deutschland ignoriert
 
---F√ºgt den Branches am anfang und Ende noch ein Wegst√ºckchen zum Substation-node hinzu um die Visualisierung zu verbessern.
+--Fügt den Branches am anfang und Ende noch ein Wegstückchen zum Substation-node hinzu um die Visualisierung zu verbessern.
 UPDATE branch_data
 	SET way = ST_AddPoint (way, (SELECT the_geom FROM bus_data WHERE branch_data.f_bus = id), 0);
 UPDATE branch_data
@@ -986,13 +1002,13 @@ UPDATE branch_data
 SELECT otg_connect_transformers ();
 
 	-- LEITUNGS ZUSAMMENFASSUNG
-	-- (Einige Leitungsabscnitte k√∂nnen mit dem Ziel die Berechnung zu Beschleunigen zusammengefasst werden)
+	-- (Einige Leitungsabscnitte können mit dem Ziel die Berechnung zu Beschleunigen zusammengefasst werden)
 
 		-- UMWANDLUNG DATENTYPEN
-		-- (F√ºr die Zusammenfassung m√ºssen einige Datentypen angepasst werden...
+		-- (Für die Zusammenfassung müssen einige Datentypen angepasst werden...
 		-- Z.B. sollen alle enthaltenen Lines in ein Array geschrieben werden)
 		
--- Spalten line_id und ways werden zu Arrays gemacht, damit lines zusammengefasst werden k√∂nnen
+-- Spalten line_id und ways werden zu Arrays gemacht, damit lines zusammengefasst werden können
 ALTER TABLE branch_data ADD COLUMN line_ids BIGINT [];
 UPDATE branch_data
 	SET line_ids [1] = line_id;
@@ -1016,24 +1032,13 @@ UPDATE branch_data
 	SET multiline = ST_Multi(ST_union(ways));
 ALTER TABLE branch_data DROP column ways; 
 
+
 -- GRAPHEN UNTERSUCHUNG (CLUSTER)
 
--- Neue Spalte discovered, in der true steht, wenn der Knoten zum Slack-Knoten Graph geh√∂rt (Zusammenhang)
+-- Neue Spalte discovered, in der true steht, wenn der Knoten zum Slack-Knoten Graph gehört (Zusammenhang)
 ALTER TABLE bus_data ADD COLUMN discovered BOOLEAN DEFAULT false;
 
--- Evtl. vorher untersuchen
--- Untersucht den Graph auf Zusammenhang (beginnt beim Slack-knoten)
---SELECT otg_graph_dfs ((SELECT id FROM bus_data 
---			WHERE substation_id = (SELECT main_station_id FROM main_station)
---			LIMIT 1));
-
--- This is now disabled!
--- -- What about this deletion? Can't it be done later (on specific demand)
--- -- Es werden die Branches und Busses gel√∂scht, die zu abgetrennten Netzbereichen geh√∂ren.
--- -- Diese werde zur Zeit nicht ins Problem-Log aufgenommen
--- DELETE FROM branch_data WHERE 	f_bus IN (SELECT id FROM bus_data WHERE discovered = false) OR
--- 				t_bus IN (SELECT id FROM bus_data WHERE discovered = false);
--- DELETE FROM bus_data WHERE discovered = false;
+SELECT otg_graph_analysis (); -- If in Python Input graph_dfs is selected True, then disconnected graphs will be deleted
 
 -- Erweitert branch_data um einfache Topologische Geometrie
 ALTER TABLE branch_data ADD COLUMN simple_geom GEOMETRY (LINESTRING, 4326);
@@ -1046,17 +1051,17 @@ UPDATE branch_data
 -- branch_id bleibt eindeutig erhalten (Gibts nur einmal, entweder in branch_data oder dc_line_data)
 
 CREATE TABLE dcline_data AS SELECT * FROM branch_data LIMIT 0;
--- Alle Leitungen mit frequency = 0 werden in neue Tabelle sc_line_data √ºbertragen.
+-- Alle Leitungen mit frequency = 0 werden in neue Tabelle sc_line_data übertragen.
 INSERT INTO dcline_data SELECT * FROM branch_data WHERE frequency = 0;
 DELETE FROM branch_data WHERE frequency = 0;
 
 
 -- BERECHNUNG DER LEITUNGS-/TRAFOKENNWERTE 
--- (√úber die Leitungsdatentabelle und Transformatortabelle werden genaue Leitungskennwerte berechnet)
+-- (Über die Leitungsdatentabelle und Transformatortabelle werden genaue Leitungskennwerte berechnet)
 
 		-- ZUORDNUNG DER KENNWERTE ZU BRANCHES UND DC-LEITUNGEN
 		
--- Neue Spalte spec_id, die die ID der Leitung in der Leitungsdatentabelle enth√§lt
+-- Neue Spalte spec_id, die die ID der Leitung in der Leitungsdatentabelle enthält
 ALTER TABLE branch_data ADD COLUMN spec_id INT;
 -- Ist die gesuchte Spannung in der Tabelle nicht zu finden, wird diejenige Spannung verwendet, die am geringsten abweicht)
 UPDATE branch_data 
@@ -1066,9 +1071,9 @@ UPDATE branch_data
 					 LIMIT 1)
 		WHERE power = 'line' OR power = 'cable';
 
--- Neue Spalte spec_id, die die ID der Leitung in der Leitungsdatentabelle enth√§lt
+-- Neue Spalte spec_id, die die ID der Leitung in der Leitungsdatentabelle enthält
 ALTER TABLE dcline_data ADD COLUMN spec_id INT;
--- Die passende Zeile der Kennwerttabelle wird zugeordnet (Bei Hg√ú wird z.Z. nur nach Freileitung oder Kabel unterschieden)
+-- Die passende Zeile der Kennwerttabelle wird zugeordnet (Bei HgÜ wird z.Z. nur nach Freileitung oder Kabel unterschieden)
 UPDATE dcline_data 
 	SET spec_id = (SELECT spec_id FROM dcline_specifications specs
 				WHERE dcline_data.power = specs.power);
@@ -1076,7 +1081,7 @@ UPDATE dcline_data
 		-- KENNWERTBERECHNUGN
 		
 			-- AC
--- Neue Spalten f√ºr Leitungsdaten
+-- Neue Spalten für Leitungsdaten
 ALTER TABLE branch_data ADD COLUMN br_r real; --resistance (p.u.)
 ALTER TABLE branch_data ADD COLUMN br_x real; --reactance (p.u.)
 ALTER TABLE branch_data ADD COLUMN br_b real; --total line charging susceptance (p.u.)
@@ -1094,7 +1099,7 @@ UPDATE branch_data
 		WHERE power != 'transformer';
 
 			-- DC
--- Neue Spalten f√ºr Leitungsdaten
+-- Neue Spalten für Leitungsdaten
 ALTER TABLE dcline_data ADD COLUMN pmax REAL; --maximale Leistung am from-Knoten
 ALTER TABLE dcline_data ADD COLUMN loss1 REAL; -- Linearer Verlustfaktor
 
@@ -1102,17 +1107,17 @@ SELECT otg_calc_dcline_specifications ();
 
 			-- MAXIMALE KNOTENLEISTUNG
 			
--- Neue Spalte S_long_MVA_sum, die f√ºr Knoten im Umspannwerk die Maximal aufnehmbare/abgebbare
--- Scheinleistung enth√§lt. Vereinfachend werden die Betr√§ge der Scheinleistung addiert. 
--- ... um die Bemessung der Trafos zu erm√∂glichen.
+-- Neue Spalte S_long_MVA_sum, die für Knoten im Umspannwerk die Maximal aufnehmbare/abgebbare
+-- Scheinleistung enthält. Vereinfachend werden die Beträge der Scheinleistung addiert. 
+-- ... um die Bemessung der Trafos zu ermöglichen.
 ALTER TABLE bus_data ADD COLUMN S_long_sum REAL; 
 
 SELECT otg_calc_max_node_power ();
 	
 			-- TRAFOS
 			
--- Berechnet die Spezifikationen f√ºr Trafos
--- Spalte f√ºr Anzahl an Standard-Trafos
+-- Berechnet die Spezifikationen für Trafos
+-- Spalte für Anzahl an Standard-Trafos
 ALTER TABLE branch_data ADD COLUMN numb_transformers INT;
 
 SELECT otg_calc_transformer_specifications ();
@@ -1121,29 +1126,30 @@ SELECT otg_calc_transformer_specifications ();
 -- BUS-TYPE / SLACK_KNOTEN-UNTERSUCHUNG
 
 -- Neue Spalte bus_type (Matpower bus_type)
--- Zun√§chst werden alle Knoten asl PQ-Knoten angenommen bus_type = 1 (Last oder Einspeisung mit fester Wirk- und Blindleistung)
+-- Zunächst werden alle Knoten asl PQ-Knoten angenommen bus_type = 1 (Last oder Einspeisung mit fester Wirk- und Blindleistung)
 ALTER TABLE bus_data ADD COLUMN bus_type INT default 1;
 
 -- Sucht die als "main_station" deklarierte Substation (OSM-ID) heraus...
---... und macht aus dem Knoten der h√∂chsten Spannungsebene innerhalb dieser Substation den Slack-bus
+--... und macht aus dem Knoten der höchsten Spannungsebene innerhalb dieser Substation den Slack-bus
 UPDATE bus_data 
 	SET bus_type = 3 
 	WHERE id = (SELECT id
 			FROM bus_data 
-			WHERE substation_id = (SELECT main_station_id 
-						FROM main_station)
+			WHERE substation_id = (SELECT val_int 
+						FROM abstr_values 
+						WHERE val_description = 'main_station')
 			ORDER BY voltage DESC
 			LIMIT 1);
 	
 
-		-- L√ñSCHUNG NICHT RELEVANTER UMSPANNWERKE
+		-- LÖSCHUNG NICHT RELEVANTER UMSPANNWERKE
 		
--- Alle Substations, die keine relevanten Punkte enthalten werden gel√∂scht.
+-- Alle Substations, die keine relevanten Punkte enthalten werden gelöscht.
 DELETE FROM power_substation WHERE id NOT IN (SELECT substation_id FROM bus_data WHERE NOT substation_id IS NULL);
 
 		-- PLZ UND NUTS3 ZUORDNUNG UMSPANNWERKE
 		
--- Neue Spalte f√ºr Leistung (maximalleistung der Knoten)		
+-- Neue Spalte für Leistung (maximalleistung der Knoten)		
 ALTER TABLE power_substation ADD COLUMN s_long NUMERIC;
 UPDATE power_substation SET s_long = (SELECT sum(s_long_sum) --sum instead of max!
 					FROM bus_data 
@@ -1157,9 +1163,9 @@ SELECT otg_plz_substation ();
 SELECT otg_nuts3_substation ();
 
 
--- ZUS√ÑTZLICHE DATEN ZUR √úBERGABE AN MATPOWER
+-- ZUSÄTZLICHE DATEN ZUR ÜBERGABE AN MATPOWER
 
--- Die Werte bus_area und zone k√∂nnen f√ºr die Summierung der Einspeisung verwendet werden. Dies wird hier vernachl√§ssigt
+-- Die Werte bus_area und zone können für die Summierung der Einspeisung verwendet werden. Dies wird hier vernachlässigt
 -- (Alle Knoten bekommen dieselbe Zone)
 ALTER TABLE bus_data ADD COLUMN bus_area INT;
 ALTER TABLE bus_data ADD COLUMN zone INT;
@@ -1177,8 +1183,8 @@ ALTER TABLE bus_data ADD COLUMN pd REAL;
 ALTER TABLE bus_data ADD COLUMN qd REAL;
 
  -- Zu Beachten:
- -- Slack Bus ben√∂tigt Generator
- -- pd und qd der Buses von au√üerhalb vorgeben.
- -- Gleichstromleitung darf nur netzintegriert verwendet werden, damit GLS l√∂sbar bleibt.
+ -- Slack Bus benötigt Generator
+ -- pd und qd der Buses von außerhalb vorgeben.
+ -- Gleichstromleitung darf nur netzintegriert verwendet werden, damit GLS lösbar bleibt.
 
 
