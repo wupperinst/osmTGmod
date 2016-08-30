@@ -20,7 +20,6 @@
 
 
 # Imports Database Modules
-
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT as _il # Needed for creating Databases
 
@@ -46,12 +45,12 @@ else:
             input=raw_input
     import io
     
-#import shutil
 
 import general_funcs
 import build_up_db
 import qgis_processing
 import qgis_projects
+
 
 class grid_model:
 
@@ -446,7 +445,6 @@ class grid_model:
 
             self.cur.copy_expert(outputquery, fh)
                        
-
             fh.close()
 
         print ('All tables written to %s!' %path)

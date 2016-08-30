@@ -1049,6 +1049,45 @@ END;
 $$ LANGUAGE plpgsql;
 
 
+-- Special Assumptions for 110kV
+
+	--otg_110kV_cables()
+CREATE OR REPLACE FUNCTION otg_110kv_cables () RETURNS VOID
+AS $$
+DECLARE 
+	v_line RECORD;
+	v_volt_idx INT[];
+	i INT;
+BEGIN 
+	FOR v_line IN 
+	-- Every power_line will be searched for 110kV voltage and then its cable entry will be checked
+	-- This is not only done for power=line, because cable-circuits hav allready been translated to calbes
+	SELECT id, voltage_array, cables_array, frequency_array FROM power_line 
+	LOOP
+		-- searches qhere 110kV is in voltage_array		
+		v_volt_idx := otg_array_search_2 (110000, v_line.voltage_array);
+
+		IF v_volt_idx IS NULL THEN CONTINUE; -- If 110kV can not be found -> next loop.
+		END IF;
+		
+		FOREACH i IN ARRAY v_volt_idx
+		LOOP
+			IF  	v_line.cables_array[i] IS NULL AND
+				(v_line.frequency_array[i] IS NULL OR
+				v_line.frequency_array[i] = 50) -- Assumption only with frequency NULL or 50
+			THEN
+				UPDATE power_line 
+					SET cables_array[i] = 3
+					WHERE 	id = v_line.id; 
+			END IF;
+		END LOOP;
+			
+	END LOOP;
+	
+END;
+$$ LANGUAGE plpgsql;
+
+
 -- VORBEREITUNG POWER_LINE FÜR TOPOLOGIEBERECHNUNG
 
 	-- SEPERATE_VOLTAGE_LEVELS
@@ -1159,7 +1198,7 @@ LOOP
 				AND main.frequency = '|| v_params.frequency;
 	
 	PERFORM pgr_createTopology (	'branch_data_topo', --source und target werden immer wieder auf NULL gesetzt und Topologie neu berechnet.
-					0.0000001, 
+					0.0005, -- Is this a good buffer?
 					'way', 
 					'line_id');
 			

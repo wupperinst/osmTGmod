@@ -23,6 +23,8 @@
 -- Konvention:
 -- Alle Werte von Variablen sind in üblichen S.I. Einheiten, falls im Variablenname keine (abweichende) Einheit angegeben ist.
 
+-- Malte 17.05.2016
+
 -- DROP TABELLEN
 
 DROP TABLE IF EXISTS power_circ_members;
@@ -43,6 +45,12 @@ DROP TABLE IF EXISTS dcline_data;
 
 DROP TABLE IF EXISTS problem_log;
 
+-- This table can optionally be used for debugging
+CREATE TABLE IF NOT EXISTS debug_vals (explanation TEXT, value TEXT);
+DELETE FROM debug_vals;
+--Example usage:
+--INSERT INTO debug_vals VALUES ('Explanation', 'whatever_value'::TEXT);
+
 
 -- ERSTELLUNG ALLGEMEINER TABELLEN (DEKLARIERUNG EINIGER VARIABLEN)
 
@@ -59,8 +67,8 @@ INSERT INTO base_MVA VALUES (100);
 -- (Macht es Sinn eine Mindesspannung zu verwenden?)
 -- Bei den Leitungskennwerten fehlen noch Werte für alle untersuchten Spannungen
 CREATE TABLE min_voltage (voltage INT);
---INSERT INTO min_voltage (voltage) VALUES (110000);
-INSERT INTO min_voltage (voltage) VALUES (220000);
+INSERT INTO min_voltage (voltage) VALUES (110000);
+--INSERT INTO min_voltage (voltage) VALUES (220000);
 --INSERT INTO min_voltage (voltage) VALUES (380000);
 
 	-- ERSTELLEN DER TOPOLOGIE-TABELLEN
@@ -274,7 +282,7 @@ UPDATE power_line
 	WHERE 
 	numb_volt_lev - 1 = otg_numb_of_cert_char (cables, ';'); -- Dort, wo die Cables pro Spannungsebene genau identifizierbar sind (Anzahl ';' übereinsimmen)
 
-
+	
 
 	-- UNTERSUCHUNG WIRES
 	
@@ -364,6 +372,10 @@ ALTER TABLE power_line ADD COLUMN cables_from_neighbour BOOLEAN;
 
 SELECT otg_unknown_value_heuristic ();
 
+-- ASSUMPTION
+-- Assumes that lines with 110kV with cables (at 110kV) IS NULL and freuq IS NULL or 50...
+-- receive cables=3
+SELECT otg_110kv_cables ();
 
 
 -- DATENUMWANDLUNG CIRCUIT_MEMBERS
@@ -760,7 +772,7 @@ CREATE TABLE power_line_sep AS SELECT * FROM branch_data LIMIT 0;
 -- Aufgetrennte power_lines werden in power_line_sep geschrieben
 -- Lines bekommen Relation_id = 0			
 SELECT otg_seperate_voltage_levels ();
-DROP TABLE power_line;
+--DROP TABLE power_line;
 
 
 	-- LÖSCHUNGEN
@@ -1011,9 +1023,9 @@ ALTER TABLE bus_data ADD COLUMN discovered BOOLEAN DEFAULT false;
 
 -- Evtl. vorher untersuchen
 -- Untersucht den Graph auf Zusammenhang (beginnt beim Slack-knoten)
-SELECT otg_graph_dfs ((SELECT id FROM bus_data 
-			WHERE substation_id = (SELECT main_station_id FROM main_station)
-			LIMIT 1));
+--SELECT otg_graph_dfs ((SELECT id FROM bus_data 
+--			WHERE substation_id = (SELECT main_station_id FROM main_station)
+--			LIMIT 1));
 
 -- This is now disabled!
 -- -- What about this deletion? Can't it be done later (on specific demand)
