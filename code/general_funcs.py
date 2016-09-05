@@ -42,7 +42,7 @@ def execute_sql (conn, cur, filepath):
 # Yes-No function
 def ask_yes_no(choice):
     
-    yes = set(['yes','y', 'ye', '']) # Enter means yes!
+    yes = set(['True', 'true', 'Yes', 'YES', 'yes','y', 'ye', '']) # Enter means yes!
     no = set(['no','n'])
     
     while True:

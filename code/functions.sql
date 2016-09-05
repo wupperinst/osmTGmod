@@ -1503,7 +1503,7 @@ CREATE OR REPLACE FUNCTION otg_bus_analysis (v_origin character varying (3)) RET
 AS $$
 BEGIN
 
--- Jedem Knoten wird einen Länderkennung gegeben
+-- Jedem Knoten wird eine Länderkennung gegeben
 UPDATE bus_data
 	SET cntr_id = 	(SELECT nuts.nuts_id
 			FROM nuts_poly nuts, bus_data bus
