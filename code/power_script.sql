@@ -1,4 +1,4 @@
------------------------------------------------------------------------------------
+﻿-----------------------------------------------------------------------------------
 --
 --  Copyright "2015" "Wuppertal Institut"
 --
@@ -33,35 +33,21 @@ DROP TABLE IF EXISTS power_substation;
 
 DROP TABLE IF EXISTS power_line_sep;
 
-DROP TABLE IF EXISTS base_MVA;
-DROP TABLE IF EXISTS voltage_levels;
-DROP TABLE IF EXISTS min_voltage;
-
 DROP TABLE IF EXISTS branch_data;
 DROP TABLE IF EXISTS bus_data;
 DROP TABLE IF EXISTS dcline_data;
 
 DROP TABLE IF EXISTS problem_log;
 
+-- This table can optionally be used for debugging
+CREATE TABLE IF NOT EXISTS debug_vals (explanation TEXT, value TEXT);
+DELETE FROM debug_vals;
+--Example usage:
+--INSERT INTO debug_vals VALUES ('Explanation', 'whatever_value'::TEXT);
+
 
 -- ERSTELLUNG ALLGEMEINER TABELLEN (DEKLARIERUNG EINIGER VARIABLEN)
 
--- ERSTELLEN DER TABELLE BASE_MVA
-
---Basis der späteren p.u. Berechnungen
-CREATE TABLE base_MVA (base_MVA INT);
-INSERT INTO base_MVA VALUES (100);
-
-
--- ERSTELLEN DER TABELLE MIN_VOLTAGE
-
--- Alle Spannungen, die mindestens so groß sind, wie min_voltage werden betrachtet
--- (Macht es Sinn eine Mindesspannung zu verwenden?)
--- Bei den Leitungskennwerten fehlen noch Werte für alle untersuchten Spannungen
-CREATE TABLE min_voltage (voltage INT);
---INSERT INTO min_voltage (voltage) VALUES (110000);
-INSERT INTO min_voltage (voltage) VALUES (220000);
---INSERT INTO min_voltage (voltage) VALUES (380000);
 
 	-- ERSTELLEN DER TOPOLOGIE-TABELLEN
 	-- (Diese werden später mit der topologischen Netzstruktur gefüllt)
@@ -139,7 +125,7 @@ CREATE INDEX power_line_way_gix ON power_line USING GIST (way);
 SELECT *
 	INTO power_substation
 	FROM power_ways_applied_changes
-	WHERE 	power = ANY (ARRAY ['substation','sub_station','station']); 
+	WHERE 	power = ANY (ARRAY ['substation','sub_station','station']);  -- "todo" Hier noch power = plant oder power = generator einfügen und extra kennzeichnen
 
 -- Erstellt einen normalen Index auf ID
 CREATE INDEX substation_id_idx ON power_substation(id);
@@ -177,22 +163,32 @@ UPDATE power_line
 	startpoint = st_startpoint(way),
 	endpoint = st_endpoint(way);
 
+-- "todo" Alle relation und relation members löschen, die ausschließlich im Ausland liegen
+
 
 -- Es werden alle Leitungen gelöscht, die Anfang und Ende außerhalb Deutschlands haben.	
-DELETE FROM power_line WHERE 	NOT id IN	(SELECT line.id 
-						FROM power_line line, nuts_poly
-						WHERE 	ST_Within(line.startpoint, nuts_poly.geom) AND
-							nuts_poly.nuts_id = 'DE') AND
-						
-				NOT id IN	(SELECT line.id 
-						FROM power_line line, nuts_poly
-						WHERE 	ST_Within(line.endpoint, nuts_poly.geom) AND
-							nuts_poly.nuts_id = 'DE');
+-- Leitungen, die Teil einer Relation sind werden allerdings behalten (disabled for now)
 
+CREATE TRIGGER problem_log_trigger
+	AFTER DELETE ON power_line
+	FOR EACH ROW 
+	EXECUTE PROCEDURE otg_power_line_problem_tg ('Not_in_Ger');
+
+	DELETE FROM power_line WHERE 	NOT id IN	(SELECT line.id 
+							FROM power_line line, nuts_poly
+							WHERE 	ST_Within(line.startpoint, nuts_poly.geom) AND
+								nuts_poly.nuts_id = 'DE') AND
+
+					NOT id IN	(SELECT line.id 
+							FROM power_line line, nuts_poly
+							WHERE 	ST_Within(line.endpoint, nuts_poly.geom) AND
+								nuts_poly.nuts_id = 'DE');-- AND 
+
+--					NOT id IN (SELECT member_id FROM relation_members);
+
+	DROP TRIGGER problem_log_trigger ON power_line;
 
 	-- BEZIEHUNG POWER_LINE/POWER SUBSTATION
-
-
 
 -- Macht eine neue Spalte, die die mögliche Substation-ID der Start- und Endpunkte der Leitung erhält.
 -- Untersuchung ob Anfangs- und Endpunkte der Leitungen innerhalb einer Substation liegen
@@ -216,7 +212,6 @@ DELETE FROM power_line WHERE point_substation_id [1] = point_substation_id [2];
 
 	
 	-- UNTERSUCHUNG SPANNUNGSEBENEN
---UPDATe power_line SET frequency = '0' WHERE id = 316867863
 
 -- Mach Neue Spalte mit Anzahl Spannungs-level...
 -- ...und füllt diese mit der Anzahl Voltage levels
@@ -235,6 +230,22 @@ UPDATE power_line
 	voltage_array [2] = otg_get_int_from_semic_string (voltage, 2), 
 	voltage_array [3] = otg_get_int_from_semic_string (voltage, 3), 
 	voltage_array [4] = otg_get_int_from_semic_string (voltage, 4);
+
+
+	-- ASSUMPTION
+	-- It is assumed that all 60kV voltages can be considered 110kV
+UPDATE power_line
+	SET
+	voltage_array [1] = 110000 WHERE voltage_array[1] = 60000;
+UPDATE power_line
+	SET
+	voltage_array [2] = 110000 WHERE voltage_array[2] = 60000;
+UPDATE power_line
+	SET
+	voltage_array [3] = 110000 WHERE voltage_array[3] = 60000;
+UPDATE power_line
+	SET
+	voltage_array [4] = 110000 WHERE voltage_array[4] = 60000;
 
 	
 		-- PROBLEM: NULL_voltage
@@ -274,7 +285,7 @@ UPDATE power_line
 	WHERE 
 	numb_volt_lev - 1 = otg_numb_of_cert_char (cables, ';'); -- Dort, wo die Cables pro Spannungsebene genau identifizierbar sind (Anzahl ';' übereinsimmen)
 
-
+	
 
 	-- UNTERSUCHUNG WIRES
 	
@@ -364,6 +375,10 @@ ALTER TABLE power_line ADD COLUMN cables_from_neighbour BOOLEAN;
 
 SELECT otg_unknown_value_heuristic ();
 
+-- ASSUMPTION
+-- Assumes that lines with 110kV with cables (at 110kV) IS NULL and freuq IS NULL or 50...
+-- receive cables=3
+SELECT otg_110kv_cables ();
 
 
 -- DATENUMWANDLUNG CIRCUIT_MEMBERS
@@ -387,7 +402,7 @@ ALTER TABLE power_circ_members
 	ADD CONSTRAINT circuit_members_fk foreign key (relation_id) references power_circuits (id) ON DELETE CASCADE;
 CREATE INDEX members_circuit_id_idx ON power_circ_members (relation_id);
 
--- Spaltenname meber_id ist irreführend dieser wird daher zu line_id umbenannt
+-- Spaltenname member_id ist irreführend dieser wird daher zu line_id umbenannt
 ALTER TABLE power_circ_members RENAME COLUMN member_id TO line_id;
 
 
@@ -411,16 +426,18 @@ UPDATE power_circuits
 		wires = 	otg_get_int_from_wires_string (wires_text, 1),
 		circuits = 	otg_get_int_from_semic_string (circuits_text, 1),
 		frequency = 	otg_get_real_from_semic_string (frequency_text, 1);
-		
+
+-- ASSUMPTION
+-- It is assumed that all 60kV voltage levels can be considered 110kV
+UPDATE power_circuits
+	SET voltage = 110000 WHERE voltage = 60000;
+	
 ALTER TABLE power_circuits DROP COLUMN voltage_text;
 ALTER TABLE power_circuits DROP COLUMN cables_text;
 ALTER TABLE power_circuits DROP COLUMN wires_text;
 ALTER TABLE power_circuits DROP COLUMN circuits_text;
 ALTER TABLE power_circuits DROP COLUMN frequency_text;
 
-
-
- 	-- MAXIMALE SPANNUNG
 
 
 	-- INFORMATIONSÜBERGABE POWER_LINE -> power_circ_members
@@ -439,7 +456,7 @@ DELETE FROM power_circ_members mem
 	CREATE TRIGGER problem_log_trigger
 		AFTER DELETE ON power_circuits
 		FOR EACH ROW 
-		EXECUTE PROCEDURE otg_power_circuits_problem_tg ('NULL_voltage');
+		EXECUTE PROCEDURE otg_power_circuits_problem_tg ('NULL_voltage_circuit');
 
 		DELETE FROM power_circuits -- Impliziert Cascadenlöschung der Members... 
 			WHERE voltage IS NULL;
@@ -448,10 +465,13 @@ DELETE FROM power_circ_members mem
 	
 
 	
--- Löscht alle power_circ_members, deren Spannung unter min_volt liegt.
+-- Löscht alle power_circuits, deren Spannung unter min_volt liegt.
 -- (Bei den Subtraktionen (der Stromkreise von den Leitungen) werden die nicht untersuchten Spannugsebenen nicht benötigt)
 DELETE FROM power_circuits
-	WHERE voltage < (SELECT voltage FROM min_voltage); --NOT IN (SELECT voltage FROM voltage_levels);
+	WHERE voltage < (SELECT val_int 
+				FROM abstr_values 
+				WHERE val_description = 'min_voltage');
+
 
 		-- ANNAHME (frequency): 
 		-- Alle Stromkreise, die keinen Frequenzwert haben (und 220kv oder 380kv), bekommen frequency = 50
@@ -469,7 +489,7 @@ UPDATE power_circuits
 		AND voltage = 110000
 		AND (	cables IS NULL OR 
 			cables = 3 OR 
-			cables = 6 OR 
+			cables = 6 OR -- Needs to be checked! 
 			cables = 9 OR 
 			cables = 12); -- Needs to be checked!
 
@@ -491,19 +511,6 @@ UPDATE power_circuits
 			WHERE frequency IS NULL;
 			
 	DROP TRIGGER problem_log_trigger ON power_circuits;
-
--- 16.7 should not be deleted (at this point), because frequency info can be written in to power_lines, when substracting!!!
--- 	-- PROBLEM: 16.7 frequency (not really a problem, just docu)
--- 	-- (Löscht alle power_circuits, die Frequenz = 16.7 haben)
--- 	CREATE TRIGGER problem_log_trigger
--- 		AFTER DELETE ON power_circuits
--- 		FOR EACH ROW 
--- 		EXECUTE PROCEDURE otg_power_circuits_problem_tg ('frequency=16.7');
--- 
--- 		DELETE FROM power_circuits -- Impliziert Cascadenlöschung der Members... 
--- 			WHERE frequency = 16.7;
--- 			
--- 	DROP TRIGGER problem_log_trigger ON power_circuits;
 
 	
 -- Annahme: Stromkreise, die keinen Cable-Eintrag haben (cables = NULL)
@@ -594,6 +601,8 @@ ALTER TABLE power_circ_members ADD COLUMN t_bus BIGINT;
 -- Die Sortierung anch Spannung und Frequenz ist an dieser Stelle irelevant, da ohnehin Realtions-weise gerechnet wird.
 -- Aufteilen der Tabelle 'power_circ_members' um DB-Servern mit wenig RAM oder wenigen max_locks_per transaction die Berechnung zu ermöglichen.
 
+-- The Split does good things, but is not beautiful!
+-- ...for memory reasons
 SELECT otg_split_table('power_circ_members', 'relation_id');
 
 SELECT otg_create_grid_topology ('split_table_1');
@@ -725,7 +734,6 @@ SELECT otg_substract_circuits() ;
 -- Durch den Puffer (otg_connect_dead_ends_with_substation) "Übergangene" Leitungen (Tabelle power_line) werden angepasst.
 -- Dies kann erst an dieser Stelle geschehen, damit nicht unkontrolliert cables von den power_line abgezogen werden
 -- (sondern nur die bis hier überbleibenden betrachtet werden)
--- Zudem können für das "Abziehen" verantwortliche Stromkreise evtl. gelöscht werden (z.B. wegen dead end).
 SELECT otg_substract_cables_within_buffer (id) FROM bus_data WHERE buffered = true AND origin = 'rel'; -- Also alle erfolgreichen Buffer
 
 
@@ -746,7 +754,9 @@ SELECT otg_substract_cables_within_buffer (id) FROM bus_data WHERE buffered = tr
 					
 		SELECT 'power_line', ARRAY [id], NULL, ST_Multi(way), NULL, NULL, NULL, NULL, 'cable_conflict'
 		FROM power_line
-		WHERE otg_check_cable_conflict (id) AND voltage_array [1]>= (SELECT voltage FROM min_voltage);
+		WHERE otg_check_cable_conflict (id) AND voltage_array [1]>= (SELECT val_int 
+										FROM abstr_values 
+										WHERE val_description = 'min_voltage');
 
 
 
@@ -758,16 +768,22 @@ SELECT otg_substract_cables_within_buffer (id) FROM bus_data WHERE buffered = tr
 	
 CREATE TABLE power_line_sep AS SELECT * FROM branch_data LIMIT 0; 
 -- Aufgetrennte power_lines werden in power_line_sep geschrieben
--- Lines bekommen Relation_id = 0			
-SELECT otg_seperate_voltage_levels ();
-DROP TABLE power_line;
+-- Lines bekommen Relation_id = 0
 
+-- These columns are still needed for separation of continuous lines	
+ALTER TABLE power_line_sep ADD COLUMN startpoint geometry (Point);
+ALTER TABLE power_line_sep ADD COLUMN endpoint geometry (Point); 
+	
+SELECT otg_seperate_voltage_levels ();
+--DROP TABLE power_line;
 
 	-- LÖSCHUNGEN
 	
 -- Es werden branches gelöscht, deren Spannung nicht Untersucht werden soll
 DELETE FROM power_line_sep 
-	WHERE 	voltage < (SELECT voltage FROM min_voltage); --NOT IN (SELECT voltage FROM voltage_levels); 
+	WHERE 	voltage < (SELECT val_int 
+				FROM abstr_values 
+				WHERE val_description = 'min_voltage'); --NOT IN (SELECT voltage FROM voltage_levels); 
 	
 		-- PROBLEM: Missing Cables
 		-- (Es werden diejenigen power_line_sep gelöscht, die cables IS NULL aufweisen)
@@ -836,22 +852,10 @@ UPDATE power_line_sep
 	WHERE frequency IS NULL; -- this needs to be checked
 		-- there may be still many train-lines (in theory 16.7Hz) among the power-lines
 
--- I will give it a try and leave 16.7 inside till the end...
--- 		-- PROBLEM: frequency=16.7 (not really a problem, just docu)
--- 		-- (Es werden diejenigen power_line_sep gelöscht, die frequency = 16.7 aufweisen) 
--- 	CREATE TRIGGER problem_log_trigger
--- 		AFTER DELETE ON power_line_sep
--- 		FOR EACH ROW 
--- 		EXECUTE PROCEDURE otg_power_line_as_branch_problem_tg ('frequency=16.7');
--- 
--- 	DELETE FROM power_line_sep 
--- 		WHERE 	frequency = 16.7;
--- 
--- 	DROP TRIGGER problem_log_trigger ON power_line_sep;
-
 
 	-- TOPOLOGIE
 	-- (Hier werden die Topologien der Spannungsebenen berechnet)
+
 
 -- Knoteninformationen werde wieder in Tabelle bus_data geschrieben
 -- An dieser Stelle sollte evtl. noch nach Frequenzen getrennt werden (damit sich übernander liegende HGÜ und Drehstromleitung nicht verbinden können)
@@ -866,6 +870,11 @@ SELECT otg_set_count ('power_line_sep', 'lin');
 -- S.o. (bei power_circuits) - Analyse der neuen Knoten
 SELECT otg_bus_analysis ('lin');
 
+-- This function connects dead ends that are close to a transmission line...
+-- to one of the transmission line vertices. 
+-- Until now this is quick and dirty and needs to be improved.
+-- Disabled because covered by other function (see functio itself)
+-- SELECT otg_connect_dead_ends_to_cont_lines ();
 
 	-- PROBLEM: dead_end
 	-- (bei den noch überbleibendne power_lines werden diejenigen iterativ gelöscht, die ein offenes Ende haben)
@@ -919,9 +928,9 @@ INSERT INTO  branch_data (	relation_id,
 
 -- Die folgenden Tabellen werden nicht mehr benötigt
 -- (Alle für das Netzmodell benötigten Informationen wurden in branch_data und bus_data vereinigt)
-DROP TABLE power_circ_members;
-DROP TABLE power_circuits;
-DROP TABLE power_line_sep;
+--DROP TABLE power_circ_members;
+--DROP TABLE power_circuits;
+--DROP TABLE power_line_sep;
 -- Die Spalten buffered und origin sind nur für Prozessierung von Bedeutung und können gelöcscht werden
 ALTER TABLE bus_data DROP COLUMN buffered;
 ALTER TABLE bus_data DROP COLUMN origin;
@@ -960,7 +969,7 @@ DELETE FROM bus_data WHERE 	NOT id IN (SELECT f_bus FROM branch_data) AND
 	-- (In diesem Abschnitt wird die Verschaltung in den Umspannwerken modelliert, sowie Transformatoren eingesetzt)
 	
 -- Ändert die Topologie, sodass Alle Punkte innerhalb einer Substation (je Spannungsebene) zu einem vereinigt werden
-SELECT otg_connect_substation_vertices(); -- für außerhalb Deutschland ignoriert
+SELECT otg_connect_substation_vertices(); -- für außerhalb Deutschland ignoriert "todo" noch zu testen ob dies noch der Fall ist (oder sein muss), wenn die Substation Teil einer Relation ist
 
 --Fügt den Branches am anfang und Ende noch ein Wegstückchen zum Substation-node hinzu um die Visualisierung zu verbessern.
 UPDATE branch_data
@@ -972,6 +981,15 @@ UPDATE branch_data
 	
 -- Erstellt innerhalb der Umspannwerke Tranformator-Leitungen, die die Substation-Knoten verbinden
 SELECT otg_connect_transformers ();
+
+
+
+-- Here, unused transfer busses are connected to the grid. 
+-- Needs to be done before branches are simplified, because...
+--...transfer busses are prefaribly connected to other busses.
+-- Disabled for the moment
+-- SELECT otg_transfer_busses ();
+
 
 	-- LEITUNGS ZUSAMMENFASSUNG
 	-- (Einige Leitungsabscnitte können mit dem Ziel die Berechnung zu Beschleunigen zusammengefasst werden)
@@ -993,7 +1011,7 @@ ALTER TABLE branch_data DROP column way;
 
 
 		-- ZUSAMMEFASSUNG VON BRANCHES
-		
+
 SELECT otg_simplify_branches_iteration ();
 
 
@@ -1004,24 +1022,14 @@ UPDATE branch_data
 	SET multiline = ST_Multi(ST_union(ways));
 ALTER TABLE branch_data DROP column ways; 
 
+
 -- GRAPHEN UNTERSUCHUNG (CLUSTER)
 
 -- Neue Spalte discovered, in der true steht, wenn der Knoten zum Slack-Knoten Graph gehört (Zusammenhang)
 ALTER TABLE bus_data ADD COLUMN discovered BOOLEAN DEFAULT false;
+		
+SELECT otg_graph_analysis (); -- If in Python Input graph_dfs is selected True, then disconnected graphs will be deleted
 
--- Evtl. vorher untersuchen
--- Untersucht den Graph auf Zusammenhang (beginnt beim Slack-knoten)
-SELECT otg_graph_dfs ((SELECT id FROM bus_data 
-			WHERE substation_id = (SELECT main_station_id FROM main_station)
-			LIMIT 1));
-
--- This is now disabled!
--- -- What about this deletion? Can't it be done later (on specific demand)
--- -- Es werden die Branches und Busses gelöscht, die zu abgetrennten Netzbereichen gehören.
--- -- Diese werde zur Zeit nicht ins Problem-Log aufgenommen
--- DELETE FROM branch_data WHERE 	f_bus IN (SELECT id FROM bus_data WHERE discovered = false) OR
--- 				t_bus IN (SELECT id FROM bus_data WHERE discovered = false);
--- DELETE FROM bus_data WHERE discovered = false;
 
 -- Erweitert branch_data um einfache Topologische Geometrie
 ALTER TABLE branch_data ADD COLUMN simple_geom GEOMETRY (LINESTRING, 4326);
@@ -1050,7 +1058,7 @@ ALTER TABLE branch_data ADD COLUMN spec_id INT;
 UPDATE branch_data 
 	SET spec_id = (SELECT spec_id FROM branch_specifications
 				WHERE 	branch_specifications.power = branch_data.power
-				ORDER BY @((branch_data.voltage/1000) - branch_specifications.voltage_kv) -- Nach kleinstem Abstand zur Angegenen Spannung
+				ORDER BY @((branch_data.voltage/1000) - branch_specifications.voltage_kv) -- Nach kleinstem Abstand zur angegebenen Spannung
 					 LIMIT 1)
 		WHERE power = 'line' OR power = 'cable';
 
@@ -1118,8 +1126,9 @@ UPDATE bus_data
 	SET bus_type = 3 
 	WHERE id = (SELECT id
 			FROM bus_data 
-			WHERE substation_id = (SELECT main_station_id 
-						FROM main_station)
+			WHERE substation_id = (SELECT val_int 
+						FROM abstr_values 
+						WHERE val_description = 'main_station')
 			ORDER BY voltage DESC
 			LIMIT 1);
 	

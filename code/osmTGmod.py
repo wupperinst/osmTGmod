@@ -20,7 +20,6 @@
 
 
 # Imports Database Modules
-
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT as _il # Needed for creating Databases
 
@@ -32,94 +31,92 @@ import sys
 import stat
 import platform
 
-if (sys.version_info > (3, 0)):
+if (sys.version_info >= (3, 0)):
     # Python 3 only import
     import urllib.request
 else:
     # Python 2 only import
     import urllib
     from urllib2 import urlopen
+
     try:
-        from  builtins import input #First check if future module has been installed
+        from  builtins import input # First check if future module has been installed
     except ImportError:
         if hasattr(__builtins__, 'raw_input'):
             input=raw_input
     import io
-    
-#import shutil
+
 
 import general_funcs
 import build_up_db
 import qgis_processing
 import qgis_projects
 
+
 class grid_model:
 
-    def __init__(self,
+    def __init__(   self,
                     database,
                     password,
                     qgis_processing_path,
-                    host='192.168.0.46',
-                    port='5432',
-                    user='postgres'
-                    ):
+                    host,
+                    port,
+                    user):
 
         self.host=host
         self.port=port
+        self.osmosis_host = str(self.host) + ':' + str(self.port)
+        
         self.user=user
         self.password=password
         self.database = database
 
         self.standard_db = 'postgres'
-        
+
         self.platform = None # Platform specific variable
-        
-        
-        ## General Platform Check (Not needed)
-        if platform.system() == "Darwin": 
-            self.platform = 'mac' 
+
+
+        ## General Platform Check
+        if platform.system() == "Darwin":
+            self.platform = 'mac'
             print("Detected platform: Darwin")
-        
+
         elif platform.system() == "Linux" or platform.system() == "Linux2":
-            self.platform = 'lin'            
+            self.platform = 'lin'
             print("Detected platform: Linux")
-            
-        elif platform.system() == "Win32" or platform.system() == "win32":
-            self.platform = 'win'             
-            print("Detected platform: Windows")
-            
+
         else:
             print("Detected platform: None")
-   
-   
+
+
         ## Osmosis Path and Activation
         self.osmosis_path = os.getcwd() + '/osmosis/bin/osmosis' # The provided Osmosis Version is allways used
-        st = os.stat(self.osmosis_path) 
+        st = os.stat(self.osmosis_path)
         os.chmod(self.osmosis_path, st.st_mode | stat.S_IEXEC) # Set the osmosis file as executable
-   
-   
-        ## Setting osmTGmod folder structure: 
+
+
+        ## Setting osmTGmod folder structure:
         print("Checking/Creating file directories")
         self.raw_data_dir = os.path.dirname(os.getcwd()) + "/raw_data"
         self.result_dir = os.path.dirname(os.getcwd()) + "/results"
         self.qgis_projects_dir = os.path.dirname(os.getcwd()) + "/qgis_projects"
-        
-        
-        # Basic folders are created if not existent
+
+
+        ## Basic folders are created if not existent
         if not os.path.exists(self.raw_data_dir):
             os.makedirs(self.raw_data_dir)
-            
+
         if not os.path.exists(self.result_dir):
             os.makedirs(self.result_dir)
-            
+
         if not os.path.exists(self.qgis_projects_dir):
             os.makedirs(self.qgis_projects_dir)
 
-        # Server connection:
+        ## Server connection:
         print ("Connecting to Server...")
 
         try:
-            # get a connection, if a connect cannot be made an exception will be raised here
+            # Standard database connection is used to check out server connection
             conn_server = psycopg2.connect( host=self.host,
                                             port=self.port,
                                             database=self.standard_db,
@@ -130,44 +127,41 @@ class grid_model:
         except:
             # Get the most recent exception
             exceptionType, exceptionValue, exceptionTraceback = sys.exc_info()
-            # Exit the script and print an error telling what happened.
-            sys.exit("Server connection failed!\n ->%s" % (exceptionValue))
+            sys.exit(exceptionValue)
 
         print ("Connecting to Database...")
 
         try:
-            # get a connection, if a connect cannot be made an exception will be raised here
             self.conn = psycopg2.connect(host=self.host,
                                 port=self.port,
                                 database=self.database,
                                 user=self.user,
                                 password=self.password)
-            # conn.cursor will return a cursor object, you can use this cursor to perform queries
+            # conn.cursor will return a cursor object, used to perform queries
             self.cur = self.conn.cursor()
             print ("Connected to Database!")
 
         except:
             # Get the most recent exception
-            exceptionType, exceptionValue, exceptionTraceback = sys.exc_info()
-            # Exit the script and print an error telling what happened.
-            # Checks if only password wrong???
+            # exceptionType, exceptionValue, exceptionTraceback = sys.exc_info()
+            # Can be improved by listing the existing databases and make a choice
             print ("There is no Database named '%s'!" % (self.database))
-            choice = input("Do you wish to create Database '%s' and build up osmTgmod-database?:" % (self.database)).lower()
+            choice = input("Do you wish to create Database '%s' and build up "\
+                "osmTgmod-database?:" % (self.database)).lower()
 
             if general_funcs.ask_yes_no(choice) == True:
-                print ("OK lets go! Creating Database...")
+                print ("Creating Database...")
 
                 # Creates new Database
                 conn_server.set_isolation_level(_il)
                 cur_server.execute('CREATE DATABASE %s' %self.database)
-                # conn_server.commit()
                 conn_server.close()
                 print ("New Database Created!")
 
                 # Connects to new Database
                 print ("Connecting to new Database...")
                 try:
-                    # get a connection, if a connection cannot be made an exception will be raised here
+                    
                     self.conn = psycopg2.connect(host=self.host,
                                 port=self.port,
                                 database=self.database,
@@ -178,18 +172,21 @@ class grid_model:
                     print ("Connected to Database!")
 
                     print ("Creating Status-Table...")
-                    # Creates a new table for documenting Database Status
+                    
+                    # Creates table _db_status... 
+                    # ...for documenting database module status
+                    # status = FALSE by default
                     self.cur.execute ("""
                         DROP TABLE IF EXISTS _db_status;
                         CREATE TABLE _db_status (module TEXT, status BOOLEAN);
-                        INSERT INTO _db_status (module, status) VALUES ('grid_model', FALSE);""")
+                        INSERT INTO _db_status (module, status) VALUES ('grid_model', FALSE);
+                                        """)
                     self.conn.commit()
 
                 except:
                     # Get the most recent exception
                     exceptionType, exceptionValue, exceptionTraceback = sys.exc_info()
-                    # Exit the script and print an error telling what happened.
-                    sys.exit("Undefinded Problem! Could not connect to new Database '%s'! (Please drop new database and try again)" % (self.database))
+                    sys.exit(exceptionValue)
 
             else:
                 sys.exit("NO Database is created - Programm cancelled by user!")
@@ -203,7 +200,8 @@ class grid_model:
 
             print ("Database not ready! Building up Database...")
 
-            build_up_db.build_up_db(self.conn, self.cur)
+            ## builds up database
+            build_up_db.build_up_db(self.conn, self.cur) # See PDF
 
         elif status == True:
             print ("Database ready to use!")
@@ -232,15 +230,16 @@ class grid_model:
         # Copying QGis-Processing Scripts
             # Writing conn-File
         print ("Writing QGis-processing files...")
-        conn_str = """host=%s port=%s user=%s dbname=%s password=%s""" %(self.host,self.port,self.user,self.database,self.password)
+        conn_str = "host=%s port=%s user=%s dbname=%s password=%s" \
+            %(self.host,self.port,self.user,self.database,self.password)
 
-        if (sys.version_info > (3, 0)):
+        if (sys.version_info >= (3, 0)):
             # Python 3 open
             fh = open(qgis_processing_path + "conn.txt","w")
         else:
             # Python 2 io.open to process data as binary, not as str
             fh = io.open(qgis_processing_path + "conn.txt","wb")
-        
+
         fh.write(conn_str)
         fh.close()
 
@@ -258,7 +257,7 @@ class grid_model:
     # Function to download OSM-Data
     # existing data is overwritten
     def download_osm_data(self, filename):
-        if (sys.version_info > (3, 0)):
+        if (sys.version_info >= (3, 0)):
             # Python 3 download
             urllib.request.urlretrieve("http://ftp5.gwdg.de/pub/misc/openstreetmap/download.geofabrik.de/germany-latest.osm.pbf", self.raw_data_dir + "/" + filename)
         else:
@@ -275,7 +274,7 @@ class grid_model:
 
         proc = subprocess.Popen('%s --rbf %s --tf accept-ways power=* --tf accept-relations route=power --used-node --wb %s'
                     %(self.osmosis_path, file_path, output_file_path), shell=True)
-                         
+
         print ("Filtering OSM-Data...")
         proc.wait() # To make sure Script waits until Osmosis is ready...
 
@@ -297,10 +296,16 @@ class grid_model:
 
         file_path = self.raw_data_dir + "/" + filename
 
+        # BUG: Python continues (and sets osm_metadata) even in case osmosis fails!!!
         proc = subprocess.Popen('%s --read-pbf %s --write-pgsql database=%s host=%s user=%s password=%s'
-                         %(self.osmosis_path, file_path, self.database, self.host, self.user, self.password), shell=True)
+                         %(self.osmosis_path, 
+                           file_path, 
+                           self.database, 
+                           self.osmosis_host, 
+                           self.user, 
+                           self.password), shell=True)
         print ('Importing OSM-Data...')
-        proc.wait() # To make sure Script waits until Osmosis is ready...
+        proc.wait()
 
         # After updating OSM-Data, power_tables (for editing) have to be updated as well
         print ("Creating power-tables...")
@@ -376,7 +381,7 @@ class grid_model:
                 self.osmosis_filter(filename_raw, filename_filter)
 
                 not_valid = False
-                
+
 
             elif choice == '3':
 
@@ -397,7 +402,14 @@ class grid_model:
 
 
 
-    def execute_abstraction(self, v_plan_ids, v_year, main_station, comment = None): # None is 'translated' to NULL in Postgres (See: Adaptation of Python values to SQL types in Docu!)
+    def execute_abstraction(self,
+                            v_plan_ids,
+                            v_year,
+                            min_voltage,
+                            main_station,
+                            graph_dfs,
+                            conn_subgraphs,
+                            comment = None): # None is 'translated' to NULL in Postgres (See: Adaptation of Python values to SQL types in Docu!)
         """
         Executes the abstraction.
         Takes 2 arguments: 1. Plan_IDs (String), 2. Year (INT).
@@ -409,10 +421,38 @@ class grid_model:
         self.cur.execute("SELECT otg_apply_changes(%s, %s);", (v_plan_ids, v_year))
         self.conn.commit()
 
-        print ("Sets main_station...")
-        self.cur.execute("UPDATE main_station SET main_station_id = %s", (main_station,))
+        # Updates (Inserts) abstraction parameters
+                # Should be done in for-loop
+        print ("Sets min_voltage...")
+        self.cur.execute("""
+            UPDATE abstr_values
+                SET val_int = %s
+                WHERE val_description = 'min_voltage'""", (min_voltage,))
         self.conn.commit()
 
+        print ("Sets main_station...")
+        self.cur.execute("""
+            UPDATE abstr_values
+                SET val_int = %s
+                WHERE val_description = 'main_station'""", (main_station,))
+        self.conn.commit()
+
+        print ("Sets graph_dfs...")
+        self.cur.execute("""
+            UPDATE abstr_values
+                SET val_bool = %s
+                WHERE val_description = 'graph_dfs'""", (graph_dfs,))
+        self.conn.commit()
+
+        print ("Sets conn_subgraphs...")
+        self.cur.execute("""
+            UPDATE abstr_values
+                SET val_bool = %s
+                WHERE val_description = 'conn_subgraphs'""", (conn_subgraphs,))
+        self.conn.commit()
+
+
+    
         # Executes power_script
         print ("Executes Abstraction...")
         general_funcs.execute_sql(self.conn, self.cur, 'power_script.sql')
@@ -438,14 +478,13 @@ class grid_model:
 
             outputquery = "COPY ({0}) TO STDOUT WITH DELIMITER ',' CSV HEADER".format(query)
 
-            if (sys.version_info > (3, 0)): 
+            if (sys.version_info > (3, 0)):
                 fh = open(filename, encoding='utf-8', mode = "w")
             else:
                 fh = open(filename, "w")
 
 
             self.cur.copy_expert(outputquery, fh)
-                       
 
             fh.close()
 
@@ -463,9 +502,9 @@ class grid_model:
 
         self.cur.execute ("""
             INSERT INTO anwendung_aenderung (aenderungs_id, plan_id, jahr, plan_intern_id, copied, copied_from)
-	            SELECT aenderungs_id, %s, jahr, plan_intern_id, TRUE, %s
-	                FROM anwendung_aenderung
-	                WHERE plan_id = %s""", (plan_id_new, plan_id_old, plan_id_old))
+                SELECT aenderungs_id, %s, jahr, plan_intern_id, TRUE, %s
+                    FROM anwendung_aenderung
+                    WHERE plan_id = %s""", (plan_id_new, plan_id_old, plan_id_old))
         self.conn.commit()
 
         print ("Plan successfully copied!")
@@ -535,29 +574,25 @@ class grid_model:
 
 
 
-# Loads grid model if executed as script...
+## Loads grid model if executed as script...
 if __name__ == '__main__':
 
-    print ('osmTGmod started as Script')
+    print ('osmTGmod executed as Script')
     print ('Please provide connection-parameters:')
 
-    database = input('database name:')
-    password = input('password:')
+    database = input('Database name:')
+    password = input('Server password:')
 
-
-    print("Checking QGis processing path...")
-    
     if os.path.exists(os.getenv("HOME") + "/.qgis2/processing/scripts/"):
         qgis_processing_path = os.getenv("HOME") + "/.qgis2/processing/scripts/"
-        print("QGis processing path: " + qgis_processing_path)
-    # The 'malte' Option is not needed. "HOME" should work fine...
+        # In case the processing path cannot be found it must be manually definded
     else:
         qgis_processing_path = input("No QGis processing path found! Provide QGis-Processing Path:")
-    
-    
-    host = input('host (default 192.168.0.46):') or '192.168.0.46'
+
+    host = input('host (default localhost):') or 'localhost' #'192.168.0.46'
     port = input('port (default 5432):') or '5432'
     user = input('user (default postgres):') or 'postgres'
+
 
     print ('Grid Model Object is created...')
     grid_model = grid_model(database, password, qgis_processing_path, host, port, user)
@@ -589,13 +624,34 @@ if __name__ == '__main__':
 
         elif choice == '2':
 
-            v_plan_ids = input("Development plan IDs (e.g. 1;2) (default None):") or None
-            v_year = input("Year of application (e.g. 2020) (default None):") or None
+            plan_ids = input("Development plan IDs (e.g. 1;2) (default None):") or None
+
+            year = input("Year of application (e.g. 2020) (default None):") or None
+
+            min_voltage = input("Minimal considered voltage (default 220000):") or 220000
+
             main_station = input("Substation with slack node (OSM-ID) (default 35176751):") or 35176751
+
+            graph_dfs_input = input("Delete disconnected (sub-)graphs (default No)?:") or 'no'
+            graph_dfs = general_funcs.ask_yes_no(graph_dfs_input) # Returns True for yes input
+
+    #         if graph_dfs == False: # If Disconnected Graphs are not deleted
+    #            conn_subgraphs_input = input("Connect subgrids (disconnected subgraphs) to main grid (dafault No)?:") or 'no'
+    #            conn_subgraphs = general_funcs.ask_yes_no(conn_subgraphs_input) # Returns True for yes input
+    #        else:
+    #            conn_subgraphs = False # In case Subgraphs are deleted, a connection of these doesn't make sense
+
+
             user_comment = input("User comment:") or None
 
             try:
-                grid_model.execute_abstraction(v_plan_ids, v_year, main_station, user_comment)
+                grid_model.execute_abstraction(plan_ids,
+                                               year,
+                                               min_voltage,
+                                               main_station,
+                                               graph_dfs,
+                                               conn_subgraphs,
+                                               user_comment)
             except:
                 # Get the most recent exception
                 exceptionType, exceptionValue, exceptionTraceback = sys.exc_info()

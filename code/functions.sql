@@ -1017,7 +1017,9 @@ AS $$
 DECLARE
 v_min_voltage INT;
 BEGIN
-v_min_voltage := (SELECT voltage FROM min_voltage);
+v_min_voltage := (SELECT val_int 
+				FROM abstr_values 
+				WHERE val_description = 'min_voltage');
 
 UPDATE branch_data
 	SET 	wires = 4 -- 4 als Srandard für 380kv	
@@ -1049,6 +1051,45 @@ END;
 $$ LANGUAGE plpgsql;
 
 
+-- Special Assumptions for 110kV
+
+	--otg_110kV_cables()
+CREATE OR REPLACE FUNCTION otg_110kv_cables () RETURNS VOID
+AS $$
+DECLARE 
+	v_line RECORD;
+	v_volt_idx INT[];
+	i INT;
+BEGIN 
+	FOR v_line IN 
+	-- Every power_line will be searched for 110kV voltage and then its cable entry will be checked
+	-- This is not only done for power=line, because cable-circuits hav allready been translated to calbes
+	SELECT id, voltage_array, cables_array, frequency_array FROM power_line 
+	LOOP
+		-- searches qhere 110kV is in voltage_array		
+		v_volt_idx := otg_array_search_2 (110000, v_line.voltage_array);
+
+		IF v_volt_idx IS NULL THEN CONTINUE; -- If 110kV can not be found -> next loop.
+		END IF;
+		
+		FOREACH i IN ARRAY v_volt_idx
+		LOOP
+			IF  	v_line.cables_array[i] IS NULL AND
+				(v_line.frequency_array[i] IS NULL OR
+				v_line.frequency_array[i] = 50) -- Assumption only with frequency NULL or 50
+			THEN
+				UPDATE power_line 
+					SET cables_array[i] = 3
+					WHERE 	id = v_line.id; 
+			END IF;
+		END LOOP;
+			
+	END LOOP;
+	
+END;
+$$ LANGUAGE plpgsql;
+
+
 -- VORBEREITUNG POWER_LINE FÜR TOPOLOGIEBERECHNUNG
 
 	-- SEPERATE_VOLTAGE_LEVELS
@@ -1071,7 +1112,9 @@ FOR v_line IN
 		cables_array,
 		wires_array, 
 		frequency_array,
-		length
+		length,
+		startpoint,
+		endpoint
 		FROM power_line
 LOOP
 	FOR i IN 1..v_line.numb_volt_lev LOOP
@@ -1083,7 +1126,9 @@ LOOP
 						cables,
 						wires,
 						frequency,
-						power)
+						power,
+						startpoint,
+						endpoint)
 			SELECT 	0,  -- Es wird Relation_id = 0 vergeben
 				v_line.id,
 				v_line.length,
@@ -1092,7 +1137,9 @@ LOOP
 				v_line.cables_array [i],
 				v_line.wires_array [i],
 				v_line.frequency_array [i],
-				v_line.power;
+				v_line.power,
+				v_line.startpoint,
+				v_line.endpoint;
 	END LOOP;
 				
 END LOOP;	
@@ -1157,9 +1204,10 @@ LOOP
 			WHERE 	main.relation_id = '|| v_params.id ||' 
 				AND main.voltage = '|| v_params.voltage ||'
 				AND main.frequency = '|| v_params.frequency;
-	
+
+	-- pgr_createTopology should not be used.
 	PERFORM pgr_createTopology (	'branch_data_topo', --source und target werden immer wieder auf NULL gesetzt und Topologie neu berechnet.
-					0.0000001, 
+					0.0005, -- Is this a good buffer?
 					'way', 
 					'line_id');
 			
@@ -1202,7 +1250,8 @@ LOOP
 		UPDATE branch_data_topo_vertices_pgr 
 			SET 	voltage = v_params.voltage,
 				frequency = v_params.frequency;
-
+				
+		-- Komplette, geupdatete Tabelle wird in bus_data geschrieben...
 		INSERT INTO bus_data (id, the_geom, voltage, frequency)
 			SELECT id, the_geom, voltage, frequency
 			FROM branch_data_topo_vertices_pgr;
@@ -1247,7 +1296,7 @@ UPDATE bus_data
 SET 	substation_id = 
 	(SELECT power_substation.id AS substation_id 
 		FROM power_substation, bus_data bus
-		WHERE 	ST_Intersects (ST_Buffer(bus.the_geom, 0.003), power_substation.poly) AND -- 0.004° (breite) = 443m Buffer
+		WHERE 	ST_Intersects (ST_Buffer(bus.the_geom, 0.004), power_substation.poly) AND -- 0.004° (breite) = 443m Buffer
 			bus.id = bus_data.id LIMIT 1), -- verbessern: wenn Buffer mehrer findet soll er nähere nehmen!
 	buffered = true
 	WHERE cnt = 1 AND substation_id IS NULL AND origin = 'rel';
@@ -1356,6 +1405,56 @@ $$
 LANGUAGE plpgsql;
 
 
+	-- otg_connect_dead_ends_to_cont_lines
+
+-- This function connects dead ends that are close to a transmission line...
+-- to one of the transmission line vertices. 
+-- Until now this is quick and dirty and needs to be improved.	
+CREATE OR REPLACE FUNCTION otg_connect_dead_ends_to_cont_lines () RETURNS void
+AS $$
+DECLARE
+v_bus RECORD;
+v_hit_line RECORD;
+v_max_line_id BIGINT;
+v_associated_line BIGINT;
+BEGIN
+v_max_line_id := (SELECT max(line_id) FROM power_line_sep);
+FOR v_bus IN	
+	SELECT id, the_geom, voltage, frequency 
+		FROM bus_data WHERE 	origin = 'lin' AND
+					cntr_id = 'DE' AND
+					substation_id IS NULL AND
+					cnt = 1 AND 
+					voltage = 110000 -- unitl now only for 110kV
+LOOP
+
+	-- Hit another line with this bus + buffer
+	SELECT f_bus, t_bus 
+				INTO v_hit_line 
+				FROM power_line_sep 
+				WHERE 	NOT f_bus = v_bus.id AND
+					NOT t_bus = v_bus.id AND -- Must not find itself
+					voltage = v_bus.voltage AND
+					frequency = v_bus.frequency AND
+					ST_intersects(way, ST_Buffer(v_bus.the_geom, 0.0005)) -- Same buffer as in CreateTopology
+					LIMIT 1; -- Include ORDER BY!!
+
+	CONTINUE WHEN v_hit_line IS NULL;
+
+	-- transmission lines with dead ends get... 
+	-- a new connection (with one of hit_line's bus)
+	-- This should be improved (distances, choice of bus etc....)
+	UPDATE power_line_sep SET f_bus = v_hit_line.f_bus 
+				WHERE f_bus = v_bus.id;
+	UPDATE power_line_sep SET t_bus = v_hit_line.t_bus
+				WHERE t_bus = v_bus.id;
+				
+END LOOP;	
+END
+$$
+LANGUAGE plpgsql;
+
+
 	-- otg_cut_off_dead_ends_iteration
 
 -- Diese Funktion löscht iterativ alle Knoten an welche nur eine Line angeschlossen ist.
@@ -1379,6 +1478,7 @@ BEGIN
 	SELECT count (*) INTO v_count FROM bus_data WHERE origin = v_origin AND cnt = 1 AND substation_id IS NULL;
 	EXIT WHEN v_count = 0; -- Abbrechen, wenn keine neuen 1er mehr gefunden werden.
 
+	-- Deletes all lines with endbus cnt=1
 	EXECUTE 'DELETE FROM '||v_table||' WHERE 	(f_bus IN (SELECT id FROM bus_data 
 								WHERE 	origin = '|| quote_literal(v_origin) ||' AND 
 									cnt = 1 AND 
@@ -1403,7 +1503,7 @@ CREATE OR REPLACE FUNCTION otg_bus_analysis (v_origin character varying (3)) RET
 AS $$
 BEGIN
 
--- Jedem Knoten wird einen Länderkennung gegeben
+-- Jedem Knoten wird eine Länderkennung gegeben
 UPDATE bus_data
 	SET cntr_id = 	(SELECT nuts.nuts_id
 			FROM nuts_poly nuts, bus_data bus
@@ -1651,7 +1751,7 @@ LANGUAGE plpgsql;
 
 	-- SIMPLIFY_BRANCHES
 
--- Löscht alle Knoten, an die genau 2 identische Leitungen angeshclossen sind...
+-- Löscht alle Knoten, an die genau 2 identische Leitungen angeschlossen sind...
 -- ... und erstellt eine neue Leitung mit der Summer der Längen der alten Leitungen.
 CREATE OR REPLACE FUNCTION otg_simplify_branches (v_vertex_id BIGINT) RETURNS void 
 AS $$
@@ -1668,6 +1768,8 @@ v_power TEXT [];
 v_line_ids BIGINT [];
 v_circuit_ids BIGINT [];
 v_ways geometry (Linestring) [];
+
+v_branch_max_id BIGINT;
 
 BEGIN
 
@@ -1718,7 +1820,7 @@ BEGIN
 					wires,
 					power,
 					ways)
-		SELECT 	v_circuit_ids [1], 
+		SELECT  v_circuit_ids [1], 
 			v_line_ids, 
 			v_length, 
 			v_f_bus_t_bus [1],
@@ -1793,6 +1895,37 @@ $$
 LANGUAGE plpgsql;
 
 
+	-- otg_graph_analysis ()
+
+-- Checks if graph_dfs is selected true. Then deletes disconnected Graphs
+CREATE OR REPLACE FUNCTION otg_graph_analysis () RETURNS void
+AS $$ 
+BEGIN
+IF (SELECT val_bool 
+	FROM abstr_values
+	WHERE val_description = 'graph_dfs') -- Only if graph_dfs is selected True (Python Script)
+	THEN
+	
+-- Evtl. vorher untersuchen
+-- Untersucht den Graph auf Zusammenhang (beginnt beim Slack-knoten)
+	PERFORM otg_graph_dfs ((SELECT id FROM bus_data 
+			WHERE substation_id = (SELECT val_int FROM abstr_values WHERE val_description = 'main_station')
+			LIMIT 1));
+
+-- Es werden die Branches und Busses gelöscht, die zu abgetrennten Netzbereichen gehören.
+-- Diese werde zur Zeit nicht ins Problem-Log aufgenommen "todo" sollten in den Problem Log mit aufgenommen werden
+
+
+	DELETE FROM branch_data WHERE 	f_bus IN (SELECT id FROM bus_data WHERE discovered = false) OR
+					t_bus IN (SELECT id FROM bus_data WHERE discovered = false);
+	DELETE FROM bus_data WHERE discovered = false;
+	
+	
+END IF;
+END
+$$
+LANGUAGE plpgsql;
+
 
 -- FUNKTIONEN ZUR BERECHNUNG DER LEITUNGS/TRAFO SPEZIFIKATIONEN
 
@@ -1823,7 +1956,11 @@ FOR v_branch IN
 		-- Bei 50 Hz. stellen 3 Leiterseile ein System dar.
 		v_numb_syst := round(v_branch.cables::REAL / 3); 
 		
-		v_Z_base := (SELECT voltage::REAL FROM bus_data WHERE id = v_branch.t_bus)^2 / (SELECT base_MVA*10^6 FROM base_MVA); --Basiswiderstand in Ohm
+		v_Z_base := (SELECT voltage::REAL 
+				FROM bus_data 
+				WHERE id = v_branch.t_bus)^2 / (SELECT val_int * 10^6 
+									FROM abstr_values 
+									WHERE val_description = 'base_MVA'); --Basiswiderstand in Ohm
 
 		-- Gesamter Ohmscher Widerstand und Induktiver Widerstand
 		-- Da die (mehreren) Systeme identisch sind, können Ohmscher und Induktiver Widerstand
@@ -1945,6 +2082,7 @@ DECLARE
 v_branch RECORD;
 
 v_U_OS REAL; -- Oberspannung (Volt)
+v_U_US REAL; -- Unterspannung (Volt)
 v_u_kr REAL; -- relative Kurzschlussspannung (%)
 v_Z_TOS REAL; -- Transformatorimpedanz (Ohm)
 v_X_TOS REAL; -- Blindwiderstand  (Ohm)
@@ -1967,15 +2105,21 @@ FOR v_branch IN
 		v_S_long_MVA_sum_max := (10^(-6))*(SELECT max (S_long_sum) 
 						FROM bus_data 
 						WHERE id = v_branch.f_bus OR id = v_branch.t_bus);
-		v_numb_transformers := (SELECT ceil( v_S_long_MVA_sum_max/(SELECT S_MVA FROM transformer_specifications))); -- Wird auf nächste ganze Zahl aufgerundet.
 
 		
 		v_U_OS := (SELECT max(voltage) FROM bus_data 
 					WHERE 	id = v_branch.f_bus OR 
 						id = v_branch.t_bus);
+						
+		v_U_US := (SELECT min(voltage) FROM bus_data 
+					WHERE 	id = v_branch.f_bus OR 
+						id = v_branch.t_bus);	
+						
+		v_numb_transformers := (SELECT ceil(v_S_long_MVA_sum_max / (SELECT S_MVA FROM transformer_specifications WHERE U_OS = v_U_OS AND U_US = v_U_US))); -- Wird auf nächste ganze Zahl aufgerundet.
+						
+		v_Srt := (SELECT S_MVA * 10^6 FROM transformer_specifications WHERE U_OS = v_U_OS AND U_US = v_U_US);
 		
-		v_Srt := (SELECT S_MVA * 10^6 FROM transformer_specifications);
-		v_u_kr := (SELECT u_kr FROM transformer_specifications);
+		v_u_kr := (SELECT u_kr FROM transformer_specifications WHERE U_OS = v_U_OS AND U_US = v_U_US);
 		
 		v_Z_TOS := v_u_kr/100 * v_u_OS^2 / v_Srt;
 		
@@ -1987,13 +2131,15 @@ FOR v_branch IN
 
 		v_X_TOS_all := -1/v_Bl_TOS_all;
 		
-		v_Z_base := v_u_OS^2 / (SELECT base_MVA * 10^6 FROM base_MVA); -- Basiswiderstand in Ohm (Oberspannungsseite)
+		v_Z_base := v_u_OS^2 / (SELECT val_int * 10^6 
+						FROM abstr_values 
+						WHERE val_description = 'base_MVA'); -- Basiswiderstand in Ohm (Oberspannungsseite)
 
 		UPDATE branch_data
 			SET	br_r = 0,
 				br_x = v_X_TOS_all / v_Z_base, --(p.u.)
 				br_b = 0,
-				S_long = (10^6) * v_numb_transformers * (SELECT S_MVA FROM transformer_specifications),
+				S_long = (10^6) * v_numb_transformers * (SELECT S_MVA FROM transformer_specifications WHERE U_OS = v_U_OS AND U_US = v_U_US),
 				tap = 1,
 				shift = 0,
 				numb_transformers = v_numb_transformers
@@ -3073,8 +3219,7 @@ INSERT INTO results.bus_data (
 			frequency,
 			the_geom as geom,        -- Point Geometry (Not simplified) WGS84
 			(SELECT name FROM power_substation WHERE power_substation.id = substation_id LIMIT 1) as osm_name
-				FROM bus_data;
-DROP TABLE bus_data;             
+				FROM bus_data;            
 
  INSERT INTO results.branch_data(
 	result_id,
@@ -3092,7 +3237,8 @@ DROP TABLE bus_data;
 	branch_voltage,
 	cables,
 	frequency,
-	geom)
+	geom,
+	topo)
 
 	SELECT   	v_new_id,
 			branch_id,
@@ -3114,9 +3260,15 @@ DROP TABLE bus_data;
 			voltage,
 			cables,
 			frequency,
-			multiline as geom       -- Line Geometry (Not simplified) WGS84
+			multiline as geom,       -- Line Geometry (Not simplified) WGS84
+			ST_MakeLine(
+			(SELECT the_geom FROM bus_data 	
+					WHERE id = f_bus),
+			(SELECT the_geom FROM bus_data 	
+					WHERE id = t_bus)) -- Topo
+					
 				FROM branch_data;
-DROP TABLE branch_data;  
+ 
 
 INSERT INTO results.dcline_data(
 	result_id,
@@ -3133,7 +3285,8 @@ INSERT INTO results.dcline_data(
 	branch_voltage,
 	cables,
 	frequency,
-	geom)
+	geom,
+	topo)
 	
 	SELECT   	v_new_id,
 			branch_id,
@@ -3155,11 +3308,18 @@ INSERT INTO results.dcline_data(
 			voltage,
 			cables,
 			frequency,
-			multiline as geom       -- Line Geometry (Not simplified) WGS84
+			multiline as geom,       -- Line Geometry (Not simplified) WGS84
+			ST_MakeLine(
+			(SELECT the_geom FROM bus_data 	
+					WHERE id = f_bus),
+			(SELECT the_geom FROM bus_data 	
+					WHERE id = t_bus)) -- Topo
 
 				FROM dcline_data;
-DROP TABLE dcline_data;  
 
+DROP TABLE bus_data;
+DROP TABLE branch_data; 
+DROP TABLE dcline_data;  
 
 INSERT INTO results.nuts3_subst (
 	result_id,
