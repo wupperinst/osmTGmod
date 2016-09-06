@@ -248,6 +248,10 @@ INSERT INTO abstr_values VALUES (	DEFAULT,
 					'graph_dfs',
 					NULL,
 					NULL);
+INSERT INTO abstr_values VALUES (	DEFAULT,
+					'conn_subgraphs',
+					NULL,
+					NULL);
 
 --Other functions access this osm_metadata
 DROP TABLE IF EXISTS osm_metadata;

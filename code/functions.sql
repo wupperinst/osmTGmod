@@ -1296,7 +1296,7 @@ UPDATE bus_data
 SET 	substation_id = 
 	(SELECT power_substation.id AS substation_id 
 		FROM power_substation, bus_data bus
-		WHERE 	ST_Intersects (ST_Buffer(bus.the_geom, 0.003), power_substation.poly) AND -- 0.004° (breite) = 443m Buffer
+		WHERE 	ST_Intersects (ST_Buffer(bus.the_geom, 0.004), power_substation.poly) AND -- 0.004° (breite) = 443m Buffer
 			bus.id = bus_data.id LIMIT 1), -- verbessern: wenn Buffer mehrer findet soll er nähere nehmen!
 	buffered = true
 	WHERE cnt = 1 AND substation_id IS NULL AND origin = 'rel';
@@ -1751,7 +1751,7 @@ LANGUAGE plpgsql;
 
 	-- SIMPLIFY_BRANCHES
 
--- Löscht alle Knoten, an die genau 2 identische Leitungen angeshclossen sind...
+-- Löscht alle Knoten, an die genau 2 identische Leitungen angeschlossen sind...
 -- ... und erstellt eine neue Leitung mit der Summer der Längen der alten Leitungen.
 CREATE OR REPLACE FUNCTION otg_simplify_branches (v_vertex_id BIGINT) RETURNS void 
 AS $$
@@ -1768,6 +1768,8 @@ v_power TEXT [];
 v_line_ids BIGINT [];
 v_circuit_ids BIGINT [];
 v_ways geometry (Linestring) [];
+
+v_branch_max_id BIGINT;
 
 BEGIN
 
@@ -1818,7 +1820,7 @@ BEGIN
 					wires,
 					power,
 					ways)
-		SELECT 	v_circuit_ids [1], 
+		SELECT  v_circuit_ids [1], 
 			v_line_ids, 
 			v_length, 
 			v_f_bus_t_bus [1],
@@ -1911,10 +1913,14 @@ IF (SELECT val_bool
 			LIMIT 1));
 
 -- Es werden die Branches und Busses gelöscht, die zu abgetrennten Netzbereichen gehören.
--- Diese werde zur Zeit nicht ins Problem-Log aufgenommen
+-- Diese werde zur Zeit nicht ins Problem-Log aufgenommen "todo" sollten in den Problem Log mit aufgenommen werden
+
+
 	DELETE FROM branch_data WHERE 	f_bus IN (SELECT id FROM bus_data WHERE discovered = false) OR
 					t_bus IN (SELECT id FROM bus_data WHERE discovered = false);
 	DELETE FROM bus_data WHERE discovered = false;
+	
+	
 END IF;
 END
 $$
@@ -2076,6 +2082,7 @@ DECLARE
 v_branch RECORD;
 
 v_U_OS REAL; -- Oberspannung (Volt)
+v_U_US REAL; -- Unterspannung (Volt)
 v_u_kr REAL; -- relative Kurzschlussspannung (%)
 v_Z_TOS REAL; -- Transformatorimpedanz (Ohm)
 v_X_TOS REAL; -- Blindwiderstand  (Ohm)
@@ -2098,15 +2105,21 @@ FOR v_branch IN
 		v_S_long_MVA_sum_max := (10^(-6))*(SELECT max (S_long_sum) 
 						FROM bus_data 
 						WHERE id = v_branch.f_bus OR id = v_branch.t_bus);
-		v_numb_transformers := (SELECT ceil( v_S_long_MVA_sum_max/(SELECT S_MVA FROM transformer_specifications))); -- Wird auf nächste ganze Zahl aufgerundet.
 
 		
 		v_U_OS := (SELECT max(voltage) FROM bus_data 
 					WHERE 	id = v_branch.f_bus OR 
 						id = v_branch.t_bus);
+						
+		v_U_US := (SELECT min(voltage) FROM bus_data 
+					WHERE 	id = v_branch.f_bus OR 
+						id = v_branch.t_bus);	
+						
+		v_numb_transformers := (SELECT ceil(v_S_long_MVA_sum_max / (SELECT S_MVA FROM transformer_specifications WHERE U_OS = v_U_OS AND U_US = v_U_US))); -- Wird auf nächste ganze Zahl aufgerundet.
+						
+		v_Srt := (SELECT S_MVA * 10^6 FROM transformer_specifications WHERE U_OS = v_U_OS AND U_US = v_U_US);
 		
-		v_Srt := (SELECT S_MVA * 10^6 FROM transformer_specifications);
-		v_u_kr := (SELECT u_kr FROM transformer_specifications);
+		v_u_kr := (SELECT u_kr FROM transformer_specifications WHERE U_OS = v_U_OS AND U_US = v_U_US);
 		
 		v_Z_TOS := v_u_kr/100 * v_u_OS^2 / v_Srt;
 		
@@ -2126,7 +2139,7 @@ FOR v_branch IN
 			SET	br_r = 0,
 				br_x = v_X_TOS_all / v_Z_base, --(p.u.)
 				br_b = 0,
-				S_long = (10^6) * v_numb_transformers * (SELECT S_MVA FROM transformer_specifications),
+				S_long = (10^6) * v_numb_transformers * (SELECT S_MVA FROM transformer_specifications WHERE U_OS = v_U_OS AND U_US = v_U_US),
 				tap = 1,
 				shift = 0,
 				numb_transformers = v_numb_transformers

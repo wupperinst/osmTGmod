@@ -106,6 +106,7 @@ print ('Zuordnung wurde gespeichert und Change_log-View erneuert') '''
     fh.write(metadata_grid_development)
     fh.close()
 
+
 ## Processing for result visualisation
 
     show_results = '''##result_id=number 1

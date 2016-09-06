@@ -1,4 +1,4 @@
------------------------------------------------------------------------------------
+﻿-----------------------------------------------------------------------------------
 --
 --  Copyright "2015" "Wuppertal Institut"
 --
@@ -125,7 +125,7 @@ CREATE INDEX power_line_way_gix ON power_line USING GIST (way);
 SELECT *
 	INTO power_substation
 	FROM power_ways_applied_changes
-	WHERE 	power = ANY (ARRAY ['substation','sub_station','station']); 
+	WHERE 	power = ANY (ARRAY ['substation','sub_station','station']);  -- "todo" Hier noch power = plant oder power = generator einfügen und extra kennzeichnen
 
 -- Erstellt einen normalen Index auf ID
 CREATE INDEX substation_id_idx ON power_substation(id);
@@ -163,20 +163,30 @@ UPDATE power_line
 	startpoint = st_startpoint(way),
 	endpoint = st_endpoint(way);
 
+-- "todo" Alle relation und relation members löschen, die ausschließlich im Ausland liegen
+
 
 -- Es werden alle Leitungen gelöscht, die Anfang und Ende außerhalb Deutschlands haben.	
-DELETE FROM power_line WHERE 	NOT id IN	(SELECT line.id 
-						FROM power_line line, nuts_poly
-						WHERE 	ST_Within(line.startpoint, nuts_poly.geom) AND
-							nuts_poly.nuts_id = 'DE') AND
-						
-				NOT id IN	(SELECT line.id 
-						FROM power_line line, nuts_poly
-						WHERE 	ST_Within(line.endpoint, nuts_poly.geom) AND
-							nuts_poly.nuts_id = 'DE') AND			
-											
-				NOT id IN (SELECT member_id FROM relation_members);
+-- Leitungen, die Teil einer Relation sind werden allerdings behalten (disabled for now)
 
+CREATE TRIGGER problem_log_trigger
+	AFTER DELETE ON power_line
+	FOR EACH ROW 
+	EXECUTE PROCEDURE otg_power_line_problem_tg ('Not_in_Ger');
+
+	DELETE FROM power_line WHERE 	NOT id IN	(SELECT line.id 
+							FROM power_line line, nuts_poly
+							WHERE 	ST_Within(line.startpoint, nuts_poly.geom) AND
+								nuts_poly.nuts_id = 'DE') AND
+
+					NOT id IN	(SELECT line.id 
+							FROM power_line line, nuts_poly
+							WHERE 	ST_Within(line.endpoint, nuts_poly.geom) AND
+								nuts_poly.nuts_id = 'DE');-- AND 
+
+--					NOT id IN (SELECT member_id FROM relation_members);
+
+	DROP TRIGGER problem_log_trigger ON power_line;
 
 	-- BEZIEHUNG POWER_LINE/POWER SUBSTATION
 
@@ -446,7 +456,7 @@ DELETE FROM power_circ_members mem
 	CREATE TRIGGER problem_log_trigger
 		AFTER DELETE ON power_circuits
 		FOR EACH ROW 
-		EXECUTE PROCEDURE otg_power_circuits_problem_tg ('NULL_voltage');
+		EXECUTE PROCEDURE otg_power_circuits_problem_tg ('NULL_voltage_circuit');
 
 		DELETE FROM power_circuits -- Impliziert Cascadenlöschung der Members... 
 			WHERE voltage IS NULL;
@@ -479,7 +489,7 @@ UPDATE power_circuits
 		AND voltage = 110000
 		AND (	cables IS NULL OR 
 			cables = 3 OR 
-			cables = 6 OR 
+			cables = 6 OR -- Needs to be checked! 
 			cables = 9 OR 
 			cables = 12); -- Needs to be checked!
 
@@ -592,7 +602,7 @@ ALTER TABLE power_circ_members ADD COLUMN t_bus BIGINT;
 -- Aufteilen der Tabelle 'power_circ_members' um DB-Servern mit wenig RAM oder wenigen max_locks_per transaction die Berechnung zu ermöglichen.
 
 -- The Split does good things, but is not beautiful!
---  ...for memory reasons
+-- ...for memory reasons
 SELECT otg_split_table('power_circ_members', 'relation_id');
 
 SELECT otg_create_grid_topology ('split_table_1');
@@ -863,7 +873,7 @@ SELECT otg_bus_analysis ('lin');
 -- This function connects dead ends that are close to a transmission line...
 -- to one of the transmission line vertices. 
 -- Until now this is quick and dirty and needs to be improved.
--- Disabled because covered by other function (see function itself)
+-- Disabled because covered by other function (see functio itself)
 -- SELECT otg_connect_dead_ends_to_cont_lines ();
 
 	-- PROBLEM: dead_end
@@ -959,7 +969,7 @@ DELETE FROM bus_data WHERE 	NOT id IN (SELECT f_bus FROM branch_data) AND
 	-- (In diesem Abschnitt wird die Verschaltung in den Umspannwerken modelliert, sowie Transformatoren eingesetzt)
 	
 -- Ändert die Topologie, sodass Alle Punkte innerhalb einer Substation (je Spannungsebene) zu einem vereinigt werden
-SELECT otg_connect_substation_vertices(); -- für außerhalb Deutschland ignoriert
+SELECT otg_connect_substation_vertices(); -- für außerhalb Deutschland ignoriert "todo" noch zu testen ob dies noch der Fall ist (oder sein muss), wenn die Substation Teil einer Relation ist
 
 --Fügt den Branches am anfang und Ende noch ein Wegstückchen zum Substation-node hinzu um die Visualisierung zu verbessern.
 UPDATE branch_data
@@ -971,6 +981,8 @@ UPDATE branch_data
 	
 -- Erstellt innerhalb der Umspannwerke Tranformator-Leitungen, die die Substation-Knoten verbinden
 SELECT otg_connect_transformers ();
+
+
 
 -- Here, unused transfer busses are connected to the grid. 
 -- Needs to be done before branches are simplified, because...
@@ -999,7 +1011,7 @@ ALTER TABLE branch_data DROP column way;
 
 
 		-- ZUSAMMEFASSUNG VON BRANCHES
-		
+
 SELECT otg_simplify_branches_iteration ();
 
 
@@ -1015,8 +1027,9 @@ ALTER TABLE branch_data DROP column ways;
 
 -- Neue Spalte discovered, in der true steht, wenn der Knoten zum Slack-Knoten Graph gehört (Zusammenhang)
 ALTER TABLE bus_data ADD COLUMN discovered BOOLEAN DEFAULT false;
-
+		
 SELECT otg_graph_analysis (); -- If in Python Input graph_dfs is selected True, then disconnected graphs will be deleted
+
 
 -- Erweitert branch_data um einfache Topologische Geometrie
 ALTER TABLE branch_data ADD COLUMN simple_geom GEOMETRY (LINESTRING, 4326);
@@ -1045,7 +1058,7 @@ ALTER TABLE branch_data ADD COLUMN spec_id INT;
 UPDATE branch_data 
 	SET spec_id = (SELECT spec_id FROM branch_specifications
 				WHERE 	branch_specifications.power = branch_data.power
-				ORDER BY @((branch_data.voltage/1000) - branch_specifications.voltage_kv) -- Nach kleinstem Abstand zur Angegenen Spannung
+				ORDER BY @((branch_data.voltage/1000) - branch_specifications.voltage_kv) -- Nach kleinstem Abstand zur angegebenen Spannung
 					 LIMIT 1)
 		WHERE power = 'line' OR power = 'cable';
 
