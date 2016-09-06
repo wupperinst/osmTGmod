@@ -125,7 +125,7 @@ CREATE INDEX power_line_way_gix ON power_line USING GIST (way);
 SELECT *
 	INTO power_substation
 	FROM power_ways_applied_changes
-	WHERE 	power = ANY (ARRAY ['substation','sub_station','station']);  -- "todo" Hier noch power = plant oder power = generator einfügen und extra kennzeichnen
+	WHERE 	power = ANY (ARRAY ['substation','sub_station','station', 'plant', 'generator']);
 
 -- Erstellt einen normalen Index auf ID
 CREATE INDEX substation_id_idx ON power_substation(id);
@@ -162,6 +162,7 @@ UPDATE power_line
 	SET
 	startpoint = st_startpoint(way),
 	endpoint = st_endpoint(way);
+
 
 -- "todo" Alle relation und relation members löschen, die ausschließlich im Ausland liegen
 
@@ -285,7 +286,56 @@ UPDATE power_line
 	WHERE 
 	numb_volt_lev - 1 = otg_numb_of_cert_char (cables, ';'); -- Dort, wo die Cables pro Spannungsebene genau identifizierbar sind (Anzahl ';' übereinsimmen)
 
+-- Mark all substations (not plants), which have 110kV connection. Thus they connect lower voltage grids.
+
+ALTER TABLE power_substation ADD COLUMN connection_110kv BOOLEAN;	
+
+ALTER TABLE power_substation ADD COLUMN numb_volt_lev INT;
+
+UPDATE power_substation 
+	SET numb_volt_lev = otg_numb_of_cert_char (voltage, ';') + 1;
 	
+-- Jede Zeile des ARRAYs (neue Spalte voltage_array) enthält die Spannung der jeweiligen Leitungs-Ebene
+-- (Es werden die 4 oberen Leitungsebenen einer Substation betrachtet)
+ALTER TABLE power_substation ADD COLUMN voltage_array INT [4];
+CREATE INDEX sub_volt_idx ON power_substation(voltage_array);
+UPDATE power_substation 
+	SET 
+	voltage_array [1] = otg_get_int_from_semic_string (voltage, 1),
+	voltage_array [2] = otg_get_int_from_semic_string (voltage, 2), 
+	voltage_array [3] = otg_get_int_from_semic_string (voltage, 3), 
+	voltage_array [4] = otg_get_int_from_semic_string (voltage, 4);
+
+
+-- ASSUMPTION
+-- It is assumed that all 60kV voltages can be considered 110kV
+UPDATE power_substation
+	SET
+	voltage_array [1] = 110000 WHERE voltage_array[1] = 60000;
+UPDATE power_substation
+	SET
+	voltage_array [2] = 110000 WHERE voltage_array[2] = 60000;
+UPDATE power_substation
+	SET
+	voltage_array [3] = 110000 WHERE voltage_array[3] = 60000;
+UPDATE power_substation
+	SET
+	voltage_array [4] = 110000 WHERE voltage_array[4] = 60000;
+-- Pass information from voltage tag of substation into connection_110kv 
+UPDATE power_substation
+	SET connection_110kv = TRUE WHERE voltage_array[1] = 110000 OR voltage_array[2] = 110000 OR voltage_array[3] = 110000 OR voltage_array[4] = 110000;
+
+ALTER TABLE power_substation DROP COLUMN voltage_array; 	
+ALTER TABLE power_substation DROP COLUMN numb_volt_lev; 
+
+-- Consider all substations which have power lines with 110kV and end or start in a substation also connected to 110kV 
+UPDATE power_substation
+	SET connection_110kv = TRUE WHERE id IN (SELECT point_substation_id [1] FROM power_line WHERE voltage_array[1] = 110000 OR voltage_array[2] = 110000 OR voltage_array[3] = 110000 OR voltage_array[4] = 110000);
+UPDATE power_substation
+	SET connection_110kv = TRUE WHERE id IN (SELECT point_substation_id [2] FROM power_line WHERE voltage_array[1] = 110000 OR voltage_array[2] = 110000 OR voltage_array[3] = 110000 OR voltage_array[4] = 110000);
+
+
+
 
 	-- UNTERSUCHUNG WIRES
 	
@@ -1172,6 +1222,8 @@ UPDATE bus_data SET va = 0;
 -- New columns for loads
 ALTER TABLE bus_data ADD COLUMN pd REAL;
 ALTER TABLE bus_data ADD COLUMN qd REAL;
+
+-- Insert in bus_data information if connected to 110kV
 
  -- Zu Beachten:
  -- Slack Bus benötigt Generator
