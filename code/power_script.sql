@@ -164,18 +164,46 @@ UPDATE power_line
 	endpoint = st_endpoint(way);
 
 
--- "todo" Alle relation und relation members löschen, die ausschließlich im Ausland liegen
+-- Determine which power_lines are outside the border and which ones are part of relations crossing the border 
+
+SELECT id INTO power_line_not_ger FROM power_line WHERE 	
+					 id IN 	(SELECT member_id FROM relation_members 
+							WHERE member_id NOT IN	
+							(SELECT line.id 
+							FROM power_line line, nuts_poly
+							WHERE 	ST_Within(line.startpoint, nuts_poly.geom) AND
+								nuts_poly.nuts_id = 'DE'))  AND
+	
+					id IN 	(SELECT member_id FROM relation_members 
+							WHERE member_id NOT IN	
+							(SELECT line.id 
+							FROM power_line line, nuts_poly
+							WHERE 	ST_Within(line.endpoint, nuts_poly.geom) AND
+								nuts_poly.nuts_id = 'DE') );
+								
+ALTER TABLE power_line_not_ger ADD COLUMN rel_id INT;
+UPDATE power_line_not_ger 
+	SET rel_id = relation_id FROM relation_members WHERE power_line_not_ger.id = relation_members.member_id;
+
+SELECT DISTINCT relation_id INTO power_relations_crossing_border FROM relation_members WHERE 
+member_id IN (SELECT id FROM power_line) AND
+NOT member_id IN (SELECT id FROM power_line_not_ger) AND
+relation_id IN (SELECT rel_id FROM power_line_not_ger)
+ORDER BY relation_id; 
+
+DROP TABLE power_line_not_ger;
 
 
 -- Es werden alle Leitungen gelöscht, die Anfang und Ende außerhalb Deutschlands haben.	
--- Leitungen, die Teil einer Relation sind werden allerdings behalten (disabled for now)
+-- power_lines, which are part of a relation crossing the border are not deleted.
 
 CREATE TRIGGER problem_log_trigger
 	AFTER DELETE ON power_line
 	FOR EACH ROW 
 	EXECUTE PROCEDURE otg_power_line_problem_tg ('Not_in_Ger');
 
-	DELETE FROM power_line WHERE 	NOT id IN	(SELECT line.id 
+	DELETE FROM power_line WHERE 	
+					NOT id IN	(SELECT line.id 
 							FROM power_line line, nuts_poly
 							WHERE 	ST_Within(line.startpoint, nuts_poly.geom) AND
 								nuts_poly.nuts_id = 'DE') AND
@@ -183,11 +211,14 @@ CREATE TRIGGER problem_log_trigger
 					NOT id IN	(SELECT line.id 
 							FROM power_line line, nuts_poly
 							WHERE 	ST_Within(line.endpoint, nuts_poly.geom) AND
-								nuts_poly.nuts_id = 'DE');-- AND 
+								nuts_poly.nuts_id = 'DE') AND 
 
---					NOT id IN (SELECT member_id FROM relation_members);
+					NOT id IN (SELECT member_id 
+							FROM relation_members 
+							WHERE relation_id IN (SELECT relation_id FROM power_relations_crossing_border));
 
 	DROP TRIGGER problem_log_trigger ON power_line;
+	DROP TABLE power_relations_crossing_border;
 
 	-- BEZIEHUNG POWER_LINE/POWER SUBSTATION
 
