@@ -466,7 +466,7 @@ class grid_model:
 
     def write_to_csv (self, result_id, path):
 
-        tables = ['bus_data', 'branch_data', 'dcline_data', 'substations', 'problem_log', 'plz_subst', 'nuts3_subst']
+        tables = ['bus_data', 'branch_data', 'dcline_data', 'substations', 'problem_log', 'plz_subst', 'nuts3_subst', 'plz_subst_110kV', 'nuts3_subst_110kV']
         for table in tables:
 
             print ('writing %s...' % table)

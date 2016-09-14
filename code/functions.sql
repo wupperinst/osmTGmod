@@ -1151,6 +1151,113 @@ LANGUAGE plpgsql;
 
 -- TOPOLOGIE-BERECHNUNG
 
+
+-- OTG_split_table () Teilt eine Tabelle v_table in 10 Einzeltabellen auf. Dabei ist die in v_parameter spezifizierte Spalte das Unterscheidungsmerkmal. Die Ursprüngliche Tabelle wird nach der Aufteilung gelöscht.
+
+CREATE OR REPLACE FUNCTION otg_split_table (v_table TEXT, v_parameter TEXT) RETURNS void
+AS $$
+
+DECLARE
+number_of_rows INT;
+part_end_1 INT;
+part_end_2 INT;
+part_end_3 INT;
+part_end_4 INT;
+part_end_5 INT;
+part_end_6 INT;
+part_end_7 INT;
+part_end_8 INT;
+part_end_9 INT;
+
+BEGIN
+
+-- Eine Hilfstabelle, in welcher die Rheinfolge der 10 Einzeltabellen bestimmt wird wird erstellt.
+EXECUTE 'CREATE TABLE table_order AS
+SELECT DISTINCT ' || v_parameter || ' FROM ' || v_table ||'
+ORDER BY ' || v_parameter;
+ALTER TABLE table_order ADD COLUMN indx serial NOT NULL PRIMARY KEY;
+
+number_of_rows := (SELECT COUNT (*)
+FROM table_order);
+
+part_end_1 := (SELECT indx FROM table_order WHERE (SELECT FLOOR (number_of_rows/10)) = indx);
+EXECUTE 'CREATE TABLE split_table_1 AS
+SELECT *
+FROM '|| v_table ||'
+WHERE '|| v_parameter ||' <= (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_1 ||')
+ORDER BY '|| v_parameter;
+
+part_end_2 := (SELECT indx FROM table_order WHERE (SELECT FLOOR (2*number_of_rows/10)) = indx);
+EXECUTE 'CREATE TABLE split_table_2 AS
+SELECT *
+FROM '|| v_table ||'
+WHERE '|| v_parameter ||' > (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_1 ||') AND '|| v_parameter ||' <= (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_2 ||')
+ORDER BY '|| v_parameter;
+
+part_end_3 := (SELECT indx FROM table_order WHERE (SELECT FLOOR (3*number_of_rows/10)) = indx);
+EXECUTE 'CREATE TABLE split_table_3 AS
+SELECT *
+FROM '|| v_table ||'
+WHERE '|| v_parameter ||' > (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_2 ||') AND '|| v_parameter ||' <= (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_3 ||')
+ORDER BY '|| v_parameter;
+
+part_end_4 := (SELECT indx FROM table_order WHERE (SELECT FLOOR (4*number_of_rows/10)) = indx);
+EXECUTE 'CREATE TABLE split_table_4 AS
+SELECT *
+FROM '|| v_table ||'
+WHERE '|| v_parameter ||' > (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_3 ||') AND '|| v_parameter ||' <= (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_4 ||')
+ORDER BY '|| v_parameter;
+
+part_end_5 := (SELECT indx FROM table_order WHERE (SELECT FLOOR (5*number_of_rows/10)) = indx);
+EXECUTE 'CREATE TABLE split_table_5 AS
+SELECT *
+FROM '|| v_table ||'
+WHERE '|| v_parameter ||' > (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_4 ||') AND '|| v_parameter ||' <= (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_5 ||')
+ORDER BY '|| v_parameter;
+
+part_end_6 := (SELECT indx FROM table_order WHERE (SELECT FLOOR (6*number_of_rows/10)) = indx);
+EXECUTE 'CREATE TABLE split_table_6 AS
+SELECT *
+FROM '|| v_table ||'
+WHERE '|| v_parameter ||' > (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_5 ||') AND '|| v_parameter ||' <= (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_6 ||')
+ORDER BY '|| v_parameter;
+
+part_end_7 := (SELECT indx FROM table_order WHERE (SELECT FLOOR (7*number_of_rows/10)) = indx);
+EXECUTE 'CREATE TABLE split_table_7 AS
+SELECT *
+FROM '|| v_table ||'
+WHERE '|| v_parameter ||' > (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_6 ||') AND '|| v_parameter ||' <= (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_7 ||')
+ORDER BY '|| v_parameter;
+
+part_end_8 := (SELECT indx FROM table_order WHERE (SELECT FLOOR (8*number_of_rows/10)) = indx);
+EXECUTE 'CREATE TABLE split_table_8 AS
+SELECT *
+FROM '|| v_table ||'
+WHERE '|| v_parameter ||' > (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_7 ||') AND '|| v_parameter ||' <= (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_8 ||')
+ORDER BY '|| v_parameter;
+
+part_end_9 := (SELECT indx FROM table_order WHERE (SELECT FLOOR (9*number_of_rows/10)) = indx);
+EXECUTE 'CREATE TABLE split_table_9 AS
+SELECT *
+FROM '|| v_table ||'
+WHERE '|| v_parameter ||' > (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_8 ||') AND '|| v_parameter ||' <= (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_9 ||')
+ORDER BY '|| v_parameter;
+
+EXECUTE 'CREATE TABLE split_table_10 AS
+SELECT *
+FROM '|| v_table ||'
+WHERE '|| v_parameter ||' > (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_9 ||')
+ORDER BY '|| v_parameter;
+
+DROP TABLE table_order;
+-- Löschung der Ursprünglichen Tabelle um Doppelungen zu vermeiden.
+EXECUTE 'DROP TABLE '|| v_table;
+
+END
+$$
+LANGUAGE plpgsql;
+
+
 	-- CREATE_GRID_TOPOLOGY
 
 -- Hier werden die Topologien der Spannungsebenen / Stromkreise berechnet.
@@ -2251,7 +2358,78 @@ RETURN NULL;
 END; $$
 LANGUAGE plpgsql;
 
+-- OTG_plz_substation_110kV () 
 
+-- Function to assign substations to plz
+CREATE OR REPLACE FUNCTION otg_plz_substation_110kV () RETURNS void
+AS $$
+
+DECLARE
+v_plz_area RECORD;
+v_numb_subst INT;
+v_total_plz_power NUMERIC;
+
+BEGIN
+-- Creates new table for assignment of substations to plz
+DROP TABLE IF EXISTS plz_substation_110kV;
+IF (SELECT val_int 
+	FROM abstr_values
+	WHERE val_description = 'min_voltage') > 110000 -- Only if min Voltage is higher than 110kV 
+	THEN
+	CREATE TABLE plz_substation_110kV (
+		plz INT,
+		substation_id INT,
+		percentage NUMERIC,
+		distance NUMERIC
+		);
+
+
+	FOR v_plz_area IN SELECT plz::INT as plz, geom FROM plz_poly
+	LOOP
+		INSERT INTO plz_substation_110kV (plz, substation_id)
+			SELECT v_plz_area.plz, id
+					FROM power_substation
+					WHERE 	ST_Within(center_geom, v_plz_area.geom) 
+					AND connection_110kV = 'TRUE' 
+					AND NOT power = 'plant';
+
+		v_numb_subst := (SELECT count(*) FROM plz_substation_110kV WHERE plz = v_plz_area.plz);	
+
+		IF v_numb_subst = 0
+		THEN 
+			INSERT INTO plz_substation_110kV (	plz, 
+							substation_id, 
+							distance)
+					SELECT 	v_plz_area.plz, 
+						id, 
+						ST_Distance(ST_Centroid(v_plz_area.geom), center_geom) as dist
+						FROM power_substation 
+						WHERE connection_110kV = 'TRUE' AND NOT power = 'plant'
+						ORDER BY dist ASC
+						LIMIT 1;
+			RAISE NOTICE 'remote added';							
+		END IF;
+
+		v_total_plz_power := (SELECT sum(s_long) 
+					FROM power_substation 
+					WHERE connection_110kV = 'TRUE' AND NOT power = 'plant' 
+					AND id = ANY (SELECT substation_id
+								FROM plz_substation_110kV
+								WHERE plz = v_plz_area.plz));
+
+		UPDATE plz_substation_110kV 
+			SET percentage = (((SELECT s_long 
+						FROM power_substation 
+						WHERE connection_110kV = 'TRUE' AND NOT power = 'plant'
+						AND id = substation_id) / v_total_plz_power) * 100) 	
+			WHERE plz = v_plz_area.plz;
+
+	RAISE NOTICE 'done';
+	END LOOP;
+END IF;
+END;
+$$ LANGUAGE plpgsql;
+ 
 
 -- OTG_PLZ_SUBSTATION () 
 
@@ -2320,7 +2498,7 @@ $$ LANGUAGE plpgsql;
 
 -- OTG_NUTS3_SUBSTATION () 
 
--- Function to assign substations to plz
+-- Function to assign substations to nuts3
 CREATE OR REPLACE FUNCTION otg_nuts3_substation () RETURNS void
 AS $$
 
@@ -2330,7 +2508,7 @@ v_numb_subst INT;
 v_total_nuts3_power NUMERIC;
 
 BEGIN
--- Creates new table for assignment of substations to plz
+-- Creates new table for assignment of substations to nuts3
 DROP TABLE IF EXISTS nuts3_substation;
 CREATE TABLE nuts3_substation (
 	nuts_id CHARACTER VARYING (14),
@@ -2384,6 +2562,80 @@ END LOOP;
 END;
 $$ LANGUAGE plpgsql;
 
+-- OTG_NUTS3_SUBSTATION_110kV () 
+
+-- Function to assign substations to nuts3
+CREATE OR REPLACE FUNCTION otg_nuts3_substation_110kV () RETURNS void
+AS $$
+
+DECLARE
+v_nuts3_area RECORD;
+v_numb_subst INT;
+v_total_nuts3_power NUMERIC;
+
+BEGIN
+-- Creates new table for assignment of substations to nuts3
+DROP TABLE IF EXISTS nuts3_substation_110kV;
+IF (SELECT val_int 
+	FROM abstr_values
+	WHERE val_description = 'min_voltage') > 110000 -- Only if min Voltage is higher than 110kV 
+	THEN
+
+	CREATE TABLE nuts3_substation_110kV (
+		nuts_id CHARACTER VARYING (14),
+		substation_id INT,
+		percentage NUMERIC,
+		distance NUMERIC
+		);
+
+
+	FOR v_nuts3_area IN SELECT nuts_id, geom 
+				FROM nuts_poly
+				WHERE 	nuts_id ILIKE '%DE%' AND -- Only Germany
+					stat_levl_ = 3 -- Only Nuts3
+	LOOP
+		INSERT INTO nuts3_substation_110kV (nuts_id, substation_id)
+			SELECT v_nuts3_area.nuts_id, id
+					FROM power_substation
+					WHERE 	 connection_110kV = 'TRUE' AND NOT power = 'plant'
+					AND ST_Within(center_geom, v_nuts3_area.geom);
+
+		v_numb_subst := (SELECT count(*) FROM nuts3_substation_110kV WHERE nuts_id = v_nuts3_area.nuts_id);	
+		
+		IF v_numb_subst = 0
+		THEN 
+			INSERT INTO nuts3_substation_110kV (	nuts_id, 
+							substation_id, 
+							distance)
+					SELECT 	v_nuts3_area.nuts_id, 
+						id, 
+						ST_Distance(ST_Centroid(v_nuts3_area.geom), center_geom) as dist
+						FROM power_substation
+						WHERE  connection_110kV = 'TRUE' AND NOT power = 'plant'
+						ORDER BY dist ASC
+						LIMIT 1;
+			RAISE NOTICE 'remote added';							
+		END IF;
+
+		v_total_nuts3_power := (SELECT sum(s_long) 
+					FROM power_substation 
+					WHERE  connection_110kV = 'TRUE' AND NOT power = 'plant'
+					AND	id = ANY (SELECT substation_id
+								FROM nuts3_substation_110kV
+								WHERE nuts_id = v_nuts3_area.nuts_id));
+
+		UPDATE nuts3_substation_110kV 
+			SET percentage = (((SELECT s_long 
+						FROM power_substation
+						WHERE  connection_110kV = 'TRUE' AND NOT power = 'plant'
+						AND id = substation_id) / v_total_nuts3_power) * 100) 	
+			WHERE nuts_id = v_nuts3_area.nuts_id;
+
+	RAISE NOTICE 'done';
+	END LOOP;
+END IF;
+END;
+$$ LANGUAGE plpgsql;
 
 
 -----------------------------------------------------------------------------
@@ -3336,6 +3588,23 @@ INSERT INTO results.nuts3_subst (
 		FROM nuts3_substation;
 DROP TABLE nuts3_substation;  
 
+IF (SELECT to_regclass('nuts3_substation_110kV') IS NOT NULL) = TRUE
+THEN
+	INSERT INTO results.nuts3_subst_110kv (
+		result_id,
+		nuts_id,
+		substation_id,
+		percentage,
+		distance)
+	
+		SELECT	v_new_id,
+			nuts_id,
+			substation_id,
+			percentage,
+			distance
+			FROM nuts3_substation_110kv;
+	DROP TABLE nuts3_substation_110kV;  
+END IF;
 
 INSERT INTO results.plz_subst (
 	result_id,
@@ -3351,6 +3620,24 @@ INSERT INTO results.plz_subst (
 		distance
 		FROM plz_substation;
 DROP TABLE plz_substation;  
+
+IF (SELECT to_regclass('plz_substation_110kV') IS NOT NULL) = TRUE
+THEN
+	INSERT INTO results.plz_subst_110kv (
+		result_id,
+		plz,
+		substation_id,
+		percentage,
+		distance)
+	
+		SELECT	v_new_id,
+			plz,
+			substation_id,
+			percentage,
+			distance
+			FROM plz_substation_110kv;
+	DROP TABLE plz_substation_110kV;  
+END IF;
 	
 INSERT INTO results.substations(
 	result_id ,
@@ -3397,110 +3684,5 @@ INSERT INTO results.problem_log(
 			FROM problem_log;
 DROP TABLE problem_log;         
 END;
-$$
-LANGUAGE plpgsql;
-
--- OTG_split_table () Teilt eine Tabelle v_table in 10 Einzeltabellen auf. Dabei ist die in v_parameter spezifizierte Spalte das Unterscheidungsmerkmal. Die Ursprüngliche Tabelle wird nach der Aufteilung gelöscht.
-
-CREATE OR REPLACE FUNCTION otg_split_table (v_table TEXT, v_parameter TEXT) RETURNS void
-AS $$
-
-DECLARE
-number_of_rows INT;
-part_end_1 INT;
-part_end_2 INT;
-part_end_3 INT;
-part_end_4 INT;
-part_end_5 INT;
-part_end_6 INT;
-part_end_7 INT;
-part_end_8 INT;
-part_end_9 INT;
-
-BEGIN
-
--- Eine Hilfstabelle, in welcher die Rheinfolge der 10 Einzeltabellen bestimmt wird wird erstellt.
-EXECUTE 'CREATE TABLE table_order AS
-SELECT DISTINCT ' || v_parameter || ' FROM ' || v_table ||'
-ORDER BY ' || v_parameter;
-ALTER TABLE table_order ADD COLUMN indx serial NOT NULL PRIMARY KEY;
-
-number_of_rows := (SELECT COUNT (*)
-FROM table_order);
-
-part_end_1 := (SELECT indx FROM table_order WHERE (SELECT FLOOR (number_of_rows/10)) = indx);
-EXECUTE 'CREATE TABLE split_table_1 AS
-SELECT *
-FROM '|| v_table ||'
-WHERE '|| v_parameter ||' <= (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_1 ||')
-ORDER BY '|| v_parameter;
-
-part_end_2 := (SELECT indx FROM table_order WHERE (SELECT FLOOR (2*number_of_rows/10)) = indx);
-EXECUTE 'CREATE TABLE split_table_2 AS
-SELECT *
-FROM '|| v_table ||'
-WHERE '|| v_parameter ||' > (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_1 ||') AND '|| v_parameter ||' <= (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_2 ||')
-ORDER BY '|| v_parameter;
-
-part_end_3 := (SELECT indx FROM table_order WHERE (SELECT FLOOR (3*number_of_rows/10)) = indx);
-EXECUTE 'CREATE TABLE split_table_3 AS
-SELECT *
-FROM '|| v_table ||'
-WHERE '|| v_parameter ||' > (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_2 ||') AND '|| v_parameter ||' <= (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_3 ||')
-ORDER BY '|| v_parameter;
-
-part_end_4 := (SELECT indx FROM table_order WHERE (SELECT FLOOR (4*number_of_rows/10)) = indx);
-EXECUTE 'CREATE TABLE split_table_4 AS
-SELECT *
-FROM '|| v_table ||'
-WHERE '|| v_parameter ||' > (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_3 ||') AND '|| v_parameter ||' <= (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_4 ||')
-ORDER BY '|| v_parameter;
-
-part_end_5 := (SELECT indx FROM table_order WHERE (SELECT FLOOR (5*number_of_rows/10)) = indx);
-EXECUTE 'CREATE TABLE split_table_5 AS
-SELECT *
-FROM '|| v_table ||'
-WHERE '|| v_parameter ||' > (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_4 ||') AND '|| v_parameter ||' <= (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_5 ||')
-ORDER BY '|| v_parameter;
-
-part_end_6 := (SELECT indx FROM table_order WHERE (SELECT FLOOR (6*number_of_rows/10)) = indx);
-EXECUTE 'CREATE TABLE split_table_6 AS
-SELECT *
-FROM '|| v_table ||'
-WHERE '|| v_parameter ||' > (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_5 ||') AND '|| v_parameter ||' <= (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_6 ||')
-ORDER BY '|| v_parameter;
-
-part_end_7 := (SELECT indx FROM table_order WHERE (SELECT FLOOR (7*number_of_rows/10)) = indx);
-EXECUTE 'CREATE TABLE split_table_7 AS
-SELECT *
-FROM '|| v_table ||'
-WHERE '|| v_parameter ||' > (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_6 ||') AND '|| v_parameter ||' <= (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_7 ||')
-ORDER BY '|| v_parameter;
-
-part_end_8 := (SELECT indx FROM table_order WHERE (SELECT FLOOR (8*number_of_rows/10)) = indx);
-EXECUTE 'CREATE TABLE split_table_8 AS
-SELECT *
-FROM '|| v_table ||'
-WHERE '|| v_parameter ||' > (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_7 ||') AND '|| v_parameter ||' <= (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_8 ||')
-ORDER BY '|| v_parameter;
-
-part_end_9 := (SELECT indx FROM table_order WHERE (SELECT FLOOR (9*number_of_rows/10)) = indx);
-EXECUTE 'CREATE TABLE split_table_9 AS
-SELECT *
-FROM '|| v_table ||'
-WHERE '|| v_parameter ||' > (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_8 ||') AND '|| v_parameter ||' <= (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_9 ||')
-ORDER BY '|| v_parameter;
-
-EXECUTE 'CREATE TABLE split_table_10 AS
-SELECT *
-FROM '|| v_table ||'
-WHERE '|| v_parameter ||' > (SELECT '|| v_parameter ||' FROM table_order WHERE indx = '|| part_end_9 ||')
-ORDER BY '|| v_parameter;
-
-DROP TABLE table_order;
--- Löschung der Ursprünglichen Tabelle um Doppelungen zu vermeiden.
-EXECUTE 'DROP TABLE '|| v_table;
-
-END
 $$
 LANGUAGE plpgsql;

@@ -125,7 +125,7 @@ CREATE INDEX power_line_way_gix ON power_line USING GIST (way);
 SELECT *
 	INTO power_substation
 	FROM power_ways_applied_changes
-	WHERE 	power = ANY (ARRAY ['substation','sub_station','station', 'plant', 'generator']);
+	WHERE 	power = ANY (ARRAY ['substation','sub_station','station', 'plant']);
 
 -- Erstellt einen normalen Index auf ID
 CREATE INDEX substation_id_idx ON power_substation(id);
@@ -1230,8 +1230,10 @@ UPDATE power_substation SET s_long = (SELECT sum(s_long_sum) --sum instead of ma
 SELECT AddGeometryColumn('power_substation', 'center_geom', 4326, 'Point', 2);
 UPDATE power_substation SET center_geom = ST_Centroid(poly);
 
--- Executes functions to create assignment-tables for plz and nut3 to substations
+-- Executes functions to create assignment-tables for plz and nuts3 to substations
+SELECT otg_plz_substation_110kV ();
 SELECT otg_plz_substation ();
+SELECT otg_nuts3_substation_110kV ();
 SELECT otg_nuts3_substation ();
 
 
@@ -1254,7 +1256,6 @@ UPDATE bus_data SET va = 0;
 ALTER TABLE bus_data ADD COLUMN pd REAL;
 ALTER TABLE bus_data ADD COLUMN qd REAL;
 
--- Insert in bus_data information if connected to 110kV
 
  -- Zu Beachten:
  -- Slack Bus benötigt Generator
