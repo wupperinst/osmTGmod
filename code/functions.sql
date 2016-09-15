@@ -1312,9 +1312,9 @@ LOOP
 				AND main.voltage = '|| v_params.voltage ||'
 				AND main.frequency = '|| v_params.frequency;
 
-	-- pgr_createTopology should not be used.
+	-- pgr_createTopology should not be used. Which alternatives do we have?
 	PERFORM pgr_createTopology (	'branch_data_topo', --source und target werden immer wieder auf NULL gesetzt und Topologie neu berechnet.
-					0.0005, -- Is this a good buffer?
+					0.0001, -- Is this a good buffer? 0.0005 was not good, some lines have been deleted which should not have been.
 					'way', 
 					'line_id');
 			
@@ -1708,7 +1708,7 @@ BEGIN
 		END IF;
 
 		-- Falls v_lev mehr als einen Eintrag hat werden die Einträge neu geordnet...
-		--... und zwar so, dass in v_freq auftrtende Level zuerst im Array stehen.
+		--... und zwar so, dass in v_freq auftretende Level zuerst im Array stehen.
 		-- Dadurch werden zunächst die am besten passenden Levels ausgewählt
 		IF array_length (v_lev, 1) > 1 
 			THEN v_lev := otg_array_reorder_by_match (v_lev, v_freq); END IF;

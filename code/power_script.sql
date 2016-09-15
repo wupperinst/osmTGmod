@@ -740,9 +740,9 @@ SELECT otg_set_count ('power_circ_members', 'rel');
 		FOR EACH ROW 
 		EXECUTE PROCEDURE otg_power_circuits_problem_tg ('branch_off_(cables_>_3)');
 		-- Die in das Log eingetragenen Werte für z.B. cables sind die aus der Datenbanke erhaltenen Werte (und nicht die über Annahmen veränderten)
-		-- auch bei cables = 3 führt branch off oft zu fehlern!!!!
+		-- bei cables = 3 führt branch off (fast) nicht mehr zu Fehlern!
 	DELETE FROM power_circuits 
-		WHERE 	--cables > 3 AND 
+		WHERE 	cables > 3 AND 
 			id IN (SELECT relation_id FROM power_circ_members 
 			WHERE 	f_bus IN (SELECT id FROM bus_data WHERE cnt > 2 AND origin = 'rel') OR
 				t_bus IN (SELECT id FROM bus_data WHERE cnt > 2 AND origin = 'rel')
@@ -758,7 +758,9 @@ ALTER TABLE bus_data ADD COLUMN cntr_id character varying (2);
 --(setzt Länderkennung, substation_id und Offene Enden im Ausland bekommen Substation_id = 0)
 SELECT otg_bus_analysis ('rel');
 
-
+-- Deletes all lines, which are to small to be taken into account for by pgr_create_topology. They are close to substations and the relation will be taken care of within the function  otg_connect_dead_ends_with_substation
+DELETE FROM power_circ_members WHERE f_bus = t_bus;
+		
 -- Heuristik: Funktion otg_connect_dead_ends_with_substation () versucht offene Stromkreisendenin der Nähe von Umspannwerken über Puffer zu schließen
 SELECT otg_connect_dead_ends_with_substation ();
 
@@ -795,11 +797,12 @@ DELETE FROM power_circ_members WHERE f_bus = t_bus;
 								substation_id IS NULL)));
 	DROP TRIGGER problem_log_trigger ON power_circuits;
 
+-- Important: delete circuit_members whos circuits have already been deleted 
+DELETE FROM power_circ_members WHERE relation_id NOT IN (SELECT id FROM power_circuits);  
 
 -- Anschließend werden alle Knoten gelöscht, an die aufgrund der Sromkreis-Löschung keine Leitungen mehr angeschlossen sind	
 SELECT otg_set_count ('power_circ_members', 'rel');
 DELETE FROM bus_data WHERE origin = 'rel' AND cnt = 0; 
-
 
 -- SUBTRAKTION DER STROMKREISE (power_circ_members) VON DEN LEITUNGEN (POWER_LINES)
 -- Die in den power_circ_members enthaltenen Informationen werden genutzt und quasi über die Leitungen "gelegt"
