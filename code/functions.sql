@@ -1403,13 +1403,29 @@ UPDATE bus_data
 SET 	substation_id = 
 	(SELECT power_substation.id AS substation_id 
 		FROM power_substation, bus_data bus
-		WHERE 	ST_Intersects (ST_Buffer(bus.the_geom, 0.004), power_substation.poly) AND -- 0.004° (breite) = 443m Buffer
+		WHERE 	ST_Intersects (ST_Buffer(bus.the_geom, 0.003), power_substation.poly) AND -- 0.004° (breite) = 443m Buffer
 			bus.id = bus_data.id LIMIT 1), -- verbessern: wenn Buffer mehrer findet soll er nähere nehmen!
 	buffered = true
 	WHERE cnt = 1 AND substation_id IS NULL AND origin = 'rel';
 -- Das obere Update wird immer durchgeführt, auch wenn keine Überschneidung stattfindet
 UPDATE bus_data
 	SET buffered = false WHERE buffered = true AND substation_id IS NULL AND origin = 'rel'; -- Also alle nicht erfolgreichen Buffer
+-- Try the buffer in non german Substations as well	
+UPDATE bus_data
+SET 	substation_id = 
+	(SELECT power_substation.id AS substation_id 
+		FROM power_substation, bus_data bus
+		WHERE 	ST_Intersects (ST_Buffer(bus.the_geom, 0.003), power_substation.poly) AND -- 0.004° (breite) = 443m Buffer
+			bus.id = bus_data.id LIMIT 1), -- verbessern: wenn Buffer mehrer findet soll er nähere nehmen!
+	buffered = true
+	WHERE cnt = 1 AND substation_id = 0 AND origin = 'rel' AND cntr_id != 'DE';
+-- Das obere Update wird immer durchgeführt, auch wenn keine Überschneidung stattfindet
+UPDATE bus_data
+	SET buffered = false WHERE buffered = true AND substation_id IS NULL AND origin = 'rel' AND cntr_id != 'DE'; -- Also alle nicht erfolgreichen Buffer
+
+UPDATE bus_data
+	SET substation_id = 0 WHERE cnt = 1 AND substation_id IS NULL AND origin = 'rel' AND cntr_id != 'DE'; -- Also alle nicht erfolgreichen Buffer auf id = 0 zurücksetzten
+	
 END
 $$
 LANGUAGE plpgsql;

@@ -761,7 +761,7 @@ SELECT otg_bus_analysis ('rel');
 -- Deletes all lines, which are to small to be taken into account for by pgr_create_topology. They are close to substations and the relation will be taken care of within the function  otg_connect_dead_ends_with_substation
 DELETE FROM power_circ_members WHERE f_bus = t_bus;
 		
--- Heuristik: Funktion otg_connect_dead_ends_with_substation () versucht offene Stromkreisendenin der Nähe von Umspannwerken über Puffer zu schließen
+-- Heuristik: Funktion otg_connect_dead_ends_with_substation () versucht offene Stromkreisendenin der Nähe von Umspannwerken über Puffer zu schließen, auch im Ausland
 SELECT otg_connect_dead_ends_with_substation ();
 
 -- Löscht alle circuit_members, die (nun aufgrund des Puffers) Anfang und Ende innerhalb derselben Substation haben
