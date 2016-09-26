@@ -125,7 +125,7 @@ CREATE INDEX power_line_way_gix ON power_line USING GIST (way);
 SELECT *
 	INTO power_substation
 	FROM power_ways_applied_changes
-	WHERE 	power = ANY (ARRAY ['substation','sub_station','station']);  -- "todo" Hier noch power = plant oder power = generator einfügen und extra kennzeichnen
+	WHERE 	power = ANY (ARRAY ['substation','sub_station','station', 'plant']);
 
 -- Erstellt einen normalen Index auf ID
 CREATE INDEX substation_id_idx ON power_substation(id);
@@ -163,18 +163,47 @@ UPDATE power_line
 	startpoint = st_startpoint(way),
 	endpoint = st_endpoint(way);
 
--- "todo" Alle relation und relation members löschen, die ausschließlich im Ausland liegen
+
+-- Determine which power_lines are outside the border and which ones are part of relations crossing the border 
+
+SELECT id INTO power_line_not_ger FROM power_line WHERE 	
+					 id IN 	(SELECT member_id FROM relation_members 
+							WHERE member_id NOT IN	
+							(SELECT line.id 
+							FROM power_line line, nuts_poly
+							WHERE 	ST_Within(line.startpoint, nuts_poly.geom) AND
+								nuts_poly.nuts_id = 'DE'))  AND
+	
+					id IN 	(SELECT member_id FROM relation_members 
+							WHERE member_id NOT IN	
+							(SELECT line.id 
+							FROM power_line line, nuts_poly
+							WHERE 	ST_Within(line.endpoint, nuts_poly.geom) AND
+								nuts_poly.nuts_id = 'DE') );
+								
+ALTER TABLE power_line_not_ger ADD COLUMN rel_id INT;
+UPDATE power_line_not_ger 
+	SET rel_id = relation_id FROM relation_members WHERE power_line_not_ger.id = relation_members.member_id;
+
+SELECT DISTINCT relation_id INTO power_relations_crossing_border FROM relation_members WHERE 
+member_id IN (SELECT id FROM power_line) AND
+NOT member_id IN (SELECT id FROM power_line_not_ger) AND
+relation_id IN (SELECT rel_id FROM power_line_not_ger)
+ORDER BY relation_id; 
+
+DROP TABLE power_line_not_ger;
 
 
 -- Es werden alle Leitungen gelöscht, die Anfang und Ende außerhalb Deutschlands haben.	
--- Leitungen, die Teil einer Relation sind werden allerdings behalten (disabled for now)
+-- power_lines, which are part of a relation crossing the border are not deleted.
 
 CREATE TRIGGER problem_log_trigger
 	AFTER DELETE ON power_line
 	FOR EACH ROW 
 	EXECUTE PROCEDURE otg_power_line_problem_tg ('Not_in_Ger');
 
-	DELETE FROM power_line WHERE 	NOT id IN	(SELECT line.id 
+	DELETE FROM power_line WHERE 	
+					NOT id IN	(SELECT line.id 
 							FROM power_line line, nuts_poly
 							WHERE 	ST_Within(line.startpoint, nuts_poly.geom) AND
 								nuts_poly.nuts_id = 'DE') AND
@@ -182,11 +211,14 @@ CREATE TRIGGER problem_log_trigger
 					NOT id IN	(SELECT line.id 
 							FROM power_line line, nuts_poly
 							WHERE 	ST_Within(line.endpoint, nuts_poly.geom) AND
-								nuts_poly.nuts_id = 'DE');-- AND 
+								nuts_poly.nuts_id = 'DE') AND 
 
---					NOT id IN (SELECT member_id FROM relation_members);
+					NOT id IN (SELECT member_id 
+							FROM relation_members 
+							WHERE relation_id IN (SELECT relation_id FROM power_relations_crossing_border));
 
 	DROP TRIGGER problem_log_trigger ON power_line;
+	DROP TABLE power_relations_crossing_border;
 
 	-- BEZIEHUNG POWER_LINE/POWER SUBSTATION
 
@@ -285,7 +317,56 @@ UPDATE power_line
 	WHERE 
 	numb_volt_lev - 1 = otg_numb_of_cert_char (cables, ';'); -- Dort, wo die Cables pro Spannungsebene genau identifizierbar sind (Anzahl ';' übereinsimmen)
 
+-- Mark all substations (not plants), which have 110kV connection. Thus they connect lower voltage grids.
+
+ALTER TABLE power_substation ADD COLUMN connection_110kv BOOLEAN;	
+
+ALTER TABLE power_substation ADD COLUMN numb_volt_lev INT;
+
+UPDATE power_substation 
+	SET numb_volt_lev = otg_numb_of_cert_char (voltage, ';') + 1;
 	
+-- Jede Zeile des ARRAYs (neue Spalte voltage_array) enthält die Spannung der jeweiligen Leitungs-Ebene
+-- (Es werden die 4 oberen Leitungsebenen einer Substation betrachtet)
+ALTER TABLE power_substation ADD COLUMN voltage_array INT [4];
+CREATE INDEX sub_volt_idx ON power_substation(voltage_array);
+UPDATE power_substation 
+	SET 
+	voltage_array [1] = otg_get_int_from_semic_string (voltage, 1),
+	voltage_array [2] = otg_get_int_from_semic_string (voltage, 2), 
+	voltage_array [3] = otg_get_int_from_semic_string (voltage, 3), 
+	voltage_array [4] = otg_get_int_from_semic_string (voltage, 4);
+
+
+-- ASSUMPTION
+-- It is assumed that all 60kV voltages can be considered 110kV
+UPDATE power_substation
+	SET
+	voltage_array [1] = 110000 WHERE voltage_array[1] = 60000;
+UPDATE power_substation
+	SET
+	voltage_array [2] = 110000 WHERE voltage_array[2] = 60000;
+UPDATE power_substation
+	SET
+	voltage_array [3] = 110000 WHERE voltage_array[3] = 60000;
+UPDATE power_substation
+	SET
+	voltage_array [4] = 110000 WHERE voltage_array[4] = 60000;
+-- Pass information from voltage tag of substation into connection_110kv 
+UPDATE power_substation
+	SET connection_110kv = TRUE WHERE voltage_array[1] = 110000 OR voltage_array[2] = 110000 OR voltage_array[3] = 110000 OR voltage_array[4] = 110000;
+
+ALTER TABLE power_substation DROP COLUMN voltage_array; 	
+ALTER TABLE power_substation DROP COLUMN numb_volt_lev; 
+
+-- Consider all substations which have power lines with 110kV and end or start in a substation also connected to 110kV 
+UPDATE power_substation
+	SET connection_110kv = TRUE WHERE id IN (SELECT point_substation_id [1] FROM power_line WHERE voltage_array[1] = 110000 OR voltage_array[2] = 110000 OR voltage_array[3] = 110000 OR voltage_array[4] = 110000);
+UPDATE power_substation
+	SET connection_110kv = TRUE WHERE id IN (SELECT point_substation_id [2] FROM power_line WHERE voltage_array[1] = 110000 OR voltage_array[2] = 110000 OR voltage_array[3] = 110000 OR voltage_array[4] = 110000);
+
+
+
 
 	-- UNTERSUCHUNG WIRES
 	
@@ -659,9 +740,9 @@ SELECT otg_set_count ('power_circ_members', 'rel');
 		FOR EACH ROW 
 		EXECUTE PROCEDURE otg_power_circuits_problem_tg ('branch_off_(cables_>_3)');
 		-- Die in das Log eingetragenen Werte für z.B. cables sind die aus der Datenbanke erhaltenen Werte (und nicht die über Annahmen veränderten)
-		-- auch bei cables = 3 führt branch off oft zu fehlern!!!!
+		-- bei cables = 3 führt branch off (fast) nicht mehr zu Fehlern!
 	DELETE FROM power_circuits 
-		WHERE 	--cables > 3 AND 
+		WHERE 	cables > 3 AND 
 			id IN (SELECT relation_id FROM power_circ_members 
 			WHERE 	f_bus IN (SELECT id FROM bus_data WHERE cnt > 2 AND origin = 'rel') OR
 				t_bus IN (SELECT id FROM bus_data WHERE cnt > 2 AND origin = 'rel')
@@ -677,8 +758,10 @@ ALTER TABLE bus_data ADD COLUMN cntr_id character varying (2);
 --(setzt Länderkennung, substation_id und Offene Enden im Ausland bekommen Substation_id = 0)
 SELECT otg_bus_analysis ('rel');
 
-
--- Heuristik: Funktion otg_connect_dead_ends_with_substation () versucht offene Stromkreisendenin der Nähe von Umspannwerken über Puffer zu schließen
+-- Deletes all lines, which are to small to be taken into account for by pgr_create_topology. They are close to substations and the relation will be taken care of within the function  otg_connect_dead_ends_with_substation
+DELETE FROM power_circ_members WHERE f_bus = t_bus;
+		
+-- Heuristik: Funktion otg_connect_dead_ends_with_substation () versucht offene Stromkreisendenin der Nähe von Umspannwerken über Puffer zu schließen, auch im Ausland
 SELECT otg_connect_dead_ends_with_substation ();
 
 -- Löscht alle circuit_members, die (nun aufgrund des Puffers) Anfang und Ende innerhalb derselben Substation haben
@@ -714,11 +797,12 @@ DELETE FROM power_circ_members WHERE f_bus = t_bus;
 								substation_id IS NULL)));
 	DROP TRIGGER problem_log_trigger ON power_circuits;
 
+-- Important: delete circuit_members whos circuits have already been deleted 
+DELETE FROM power_circ_members WHERE relation_id NOT IN (SELECT id FROM power_circuits);  
 
 -- Anschließend werden alle Knoten gelöscht, an die aufgrund der Sromkreis-Löschung keine Leitungen mehr angeschlossen sind	
 SELECT otg_set_count ('power_circ_members', 'rel');
 DELETE FROM bus_data WHERE origin = 'rel' AND cnt = 0; 
-
 
 -- SUBTRAKTION DER STROMKREISE (power_circ_members) VON DEN LEITUNGEN (POWER_LINES)
 -- Die in den power_circ_members enthaltenen Informationen werden genutzt und quasi über die Leitungen "gelegt"
@@ -1149,8 +1233,10 @@ UPDATE power_substation SET s_long = (SELECT sum(s_long_sum) --sum instead of ma
 SELECT AddGeometryColumn('power_substation', 'center_geom', 4326, 'Point', 2);
 UPDATE power_substation SET center_geom = ST_Centroid(poly);
 
--- Executes functions to create assignment-tables for plz and nut3 to substations
+-- Executes functions to create assignment-tables for plz and nuts3 to substations
+SELECT otg_plz_substation_110kV ();
 SELECT otg_plz_substation ();
+SELECT otg_nuts3_substation_110kV ();
 SELECT otg_nuts3_substation ();
 
 
@@ -1172,6 +1258,7 @@ UPDATE bus_data SET va = 0;
 -- New columns for loads
 ALTER TABLE bus_data ADD COLUMN pd REAL;
 ALTER TABLE bus_data ADD COLUMN qd REAL;
+
 
  -- Zu Beachten:
  -- Slack Bus benötigt Generator

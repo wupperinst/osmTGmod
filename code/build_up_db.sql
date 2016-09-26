@@ -167,6 +167,17 @@ CREATE TABLE IF NOT EXISTS results.nuts3_subst(
 ALTER TABLE results.nuts3_subst DROP CONSTRAINT IF EXISTS result_fk;		
 ALTER TABLE results.nuts3_subst 
 	ADD CONSTRAINT result_fk foreign key (result_id) references results.results_metadata (id) ON DELETE CASCADE;
+
+CREATE TABLE IF NOT EXISTS results.nuts3_subst_110kv(
+		result_id INT,
+		nuts_id Character Varying (14),
+		substation_id BIGINT,
+		percentage NUMERIC,
+		distance NUMERIC);
+
+ALTER TABLE results.nuts3_subst_110kv DROP CONSTRAINT IF EXISTS result_fk;		
+ALTER TABLE results.nuts3_subst_110kv 
+	ADD CONSTRAINT result_fk foreign key (result_id) references results.results_metadata (id) ON DELETE CASCADE;
 	
 CREATE TABLE IF NOT EXISTS results.plz_subst(
 		result_id INT,
@@ -179,6 +190,16 @@ ALTER TABLE results.plz_subst DROP CONSTRAINT IF EXISTS result_fk;
 ALTER TABLE results.plz_subst
 	ADD CONSTRAINT result_fk foreign key (result_id) references results.results_metadata (id) ON DELETE CASCADE;
 
+CREATE TABLE IF NOT EXISTS results.plz_subst_110kv(
+		result_id INT,
+		plz INTEGER,
+		substation_id BIGINT,
+		percentage NUMERIC,
+		distance NUMERIC);
+
+ALTER TABLE results.plz_subst_110kv DROP CONSTRAINT IF EXISTS result_fk;		
+ALTER TABLE results.plz_subst_110kv
+	ADD CONSTRAINT result_fk foreign key (result_id) references results.results_metadata (id) ON DELETE CASCADE;
 
 CREATE TABLE IF NOT EXISTS results.substations(
 		result_id INT,

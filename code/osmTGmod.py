@@ -408,7 +408,6 @@ class grid_model:
                             min_voltage,
                             main_station,
                             graph_dfs,
-                            conn_subgraphs,
                             comment = None): # None is 'translated' to NULL in Postgres (See: Adaptation of Python values to SQL types in Docu!)
         """
         Executes the abstraction.
@@ -444,12 +443,12 @@ class grid_model:
                 WHERE val_description = 'graph_dfs'""", (graph_dfs,))
         self.conn.commit()
 
-        print ("Sets conn_subgraphs...")
-        self.cur.execute("""
-            UPDATE abstr_values
-                SET val_bool = %s
-                WHERE val_description = 'conn_subgraphs'""", (conn_subgraphs,))
-        self.conn.commit()
+#        print ("Sets conn_subgraphs...")
+#        self.cur.execute("""
+#            UPDATE abstr_values
+#                SET val_bool = %s
+#                WHERE val_description = 'conn_subgraphs'""", (conn_subgraphs,))
+#        self.conn.commit()
 
 
     
@@ -467,7 +466,7 @@ class grid_model:
 
     def write_to_csv (self, result_id, path):
 
-        tables = ['bus_data', 'branch_data', 'dcline_data', 'substations', 'problem_log', 'plz_subst', 'nuts3_subst']
+        tables = ['bus_data', 'branch_data', 'dcline_data', 'substations', 'problem_log', 'plz_subst', 'nuts3_subst', 'plz_subst_110kV', 'nuts3_subst_110kV']
         for table in tables:
 
             print ('writing %s...' % table)
@@ -650,7 +649,6 @@ if __name__ == '__main__':
                                                min_voltage,
                                                main_station,
                                                graph_dfs,
-                                               conn_subgraphs,
                                                user_comment)
             except:
                 # Get the most recent exception
