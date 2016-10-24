@@ -146,6 +146,11 @@ ALTER TABLE power_substation DROP COLUMN way;
 -- Macht einen spatial Index auf Geometriespalte poly
 CREATE INDEX substation_poly_gix ON power_substation USING GIST (poly);
 
+-- Delete all substations which are 'plants' and have a substation within their area. Takes quite a while... 
+DELETE FROM power_substation 
+WHERE id IN
+(SELECT T2.id FROM power_substation T1, power_substation T2
+WHERE ST_contains(T2.poly, otg_point_inside_geometry(T1.poly)) AND T2.power = 'plant' AND T2.id <> T1.id);
 
 	-- GEOMETRIE POWER_LINE
 	-- (Zunächst handelt es sich lediglich um geometrische Informationen - keine Topologie)
