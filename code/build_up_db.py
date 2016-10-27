@@ -28,7 +28,8 @@ def build_up_db(conn, cur):
     # Sripts can be executed again when "reloading" Grid Model
     scripts = ['extensions.sql',
               'functions.sql',
-               'admin_boundaries.sql',
+               'admin_boundaries_1.sql',
+               'admin_boundaries_2.sql',
                'electrical_properties.sql',
                'grid_development.sql',
                'build_up_db.sql']

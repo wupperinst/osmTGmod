@@ -181,7 +181,7 @@ ALTER TABLE results.nuts3_subst_110kv
 	
 CREATE TABLE IF NOT EXISTS results.plz_subst(
 		result_id INT,
-		plz INTEGER,
+		plz TEXT,
 		substation_id BIGINT,
 		percentage NUMERIC,
 		distance NUMERIC);
@@ -192,7 +192,7 @@ ALTER TABLE results.plz_subst
 
 CREATE TABLE IF NOT EXISTS results.plz_subst_110kv(
 		result_id INT,
-		plz INTEGER,
+		plz TEXT,
 		substation_id BIGINT,
 		percentage NUMERIC,
 		distance NUMERIC);

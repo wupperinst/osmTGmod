@@ -1236,7 +1236,7 @@ UPDATE power_substation SET s_long = (SELECT sum(s_long_sum) --sum instead of ma
 					WHERE substation_id = power_substation.id);
 -- additional column for center					
 SELECT AddGeometryColumn('power_substation', 'center_geom', 4326, 'Point', 2);
-UPDATE power_substation SET center_geom = ST_Centroid(poly);
+UPDATE power_substation SET center_geom = otg_point_inside_geometry(poly);
 
 -- Executes functions to create assignment-tables for plz and nuts3 to substations
 SELECT otg_plz_substation_110kV ();

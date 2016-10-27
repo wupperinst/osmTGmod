@@ -2413,14 +2413,15 @@ IF (SELECT val_int
 	WHERE val_description = 'min_voltage') > 110000 -- Only if min Voltage is higher than 110kV 
 	THEN
 	CREATE TABLE plz_substation_110kV (
-		plz INT,
+		id SERIAL,
+		plz TEXT,
 		substation_id INT,
 		percentage NUMERIC,
 		distance NUMERIC
 		);
 
 
-	FOR v_plz_area IN SELECT plz::INT as plz, geom FROM plz_poly
+	FOR v_plz_area IN SELECT plz::TEXT as plz, geom FROM plz_poly
 	LOOP
 		INSERT INTO plz_substation_110kV (plz, substation_id)
 			SELECT v_plz_area.plz, id
@@ -2462,6 +2463,18 @@ IF (SELECT val_int
 
 	RAISE NOTICE 'done';
 	END LOOP;
+	
+	DELETE FROM plz_substation_110kV WHERE id IN (
+	SELECT tab1.id
+	FROM plz_substation_110kV tab1, plz_substation_110kV  tab2
+	WHERE tab1.plz=tab2.plz
+ 	 AND tab1.substation_id = tab2.substation_id
+ 	 AND tab1.id<>tab2.id
+ 	 AND tab1.id=(SELECT MIN(id) FROM plz_substation_110kV tab 
+ 	   WHERE tab.plz=tab1.plz AND tab.substation_id = tab1.substation_id));
+ 	   
+ 	ALTER TABLE plz_substation_110kV DROP COLUMN id;
+ 	
 END IF;
 END;
 $$ LANGUAGE plpgsql;
@@ -2482,14 +2495,15 @@ BEGIN
 -- Creates new table for assignment of substations to plz
 DROP TABLE IF EXISTS plz_substation;
 CREATE TABLE plz_substation (
-	plz INT,
+	id SERIAL, 
+	plz TEXT,
 	substation_id INT,
 	percentage NUMERIC,
 	distance NUMERIC
 	);
 
 
-FOR v_plz_area IN SELECT plz::INT as plz, geom FROM plz_poly
+FOR v_plz_area IN SELECT plz::TEXT as plz, geom FROM plz_poly
 LOOP
 	INSERT INTO plz_substation (plz, substation_id)
 		SELECT v_plz_area.plz, id
@@ -2526,6 +2540,17 @@ LOOP
 
 RAISE NOTICE 'done';
 END LOOP;
+
+DELETE FROM plz_substation WHERE id IN (
+SELECT tab1.id
+FROM plz_substation tab1, plz_substation  tab2
+WHERE tab1.plz=tab2.plz
+  AND tab1.substation_id = tab2.substation_id
+  AND tab1.id<>tab2.id
+  AND tab1.id=(SELECT Min(id) FROM plz_substation tab 
+    WHERE tab.plz=tab1.plz AND tab.substation_id = tab1.substation_id));
+    
+ALTER TABLE plz_substation DROP COLUMN id;
 
 END;
 $$ LANGUAGE plpgsql;
