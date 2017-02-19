@@ -146,6 +146,11 @@ ALTER TABLE power_substation DROP COLUMN way;
 -- Macht einen spatial Index auf Geometriespalte poly
 CREATE INDEX substation_poly_gix ON power_substation USING GIST (poly);
 
+-- Delete all substations which are 'plants' and have a substation within their area. Takes quite a while... 
+DELETE FROM power_substation 
+WHERE id IN
+(SELECT T2.id FROM power_substation T1, power_substation T2
+WHERE ST_contains(T2.poly, otg_point_inside_geometry(T1.poly)) AND T2.power = 'plant' AND T2.id <> T1.id);
 
 	-- GEOMETRIE POWER_LINE
 	-- (Zunächst handelt es sich lediglich um geometrische Informationen - keine Topologie)
@@ -1231,7 +1236,7 @@ UPDATE power_substation SET s_long = (SELECT sum(s_long_sum) --sum instead of ma
 					WHERE substation_id = power_substation.id);
 -- additional column for center					
 SELECT AddGeometryColumn('power_substation', 'center_geom', 4326, 'Point', 2);
-UPDATE power_substation SET center_geom = ST_Centroid(poly);
+UPDATE power_substation SET center_geom = otg_point_inside_geometry(poly);
 
 -- Executes functions to create assignment-tables for plz and nuts3 to substations
 SELECT otg_plz_substation_110kV ();

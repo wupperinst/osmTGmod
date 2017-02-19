@@ -1,4 +1,4 @@
-﻿-----------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------
 --                                                                                 
 --  Copyright "2015" "Wuppertal Institut"                                         
 --                                                                                
@@ -1151,6 +1151,26 @@ LANGUAGE plpgsql;
 
 -- TOPOLOGIE-BERECHNUNG
 
+-- POINT_INSIDE_GEOMETRY
+-- Calculates the center of a geometry. If this center is outside the geometry, a point inside the geometry, which is close to the center is chosen.
+CREATE OR REPLACE FUNCTION otg_point_inside_geometry(param_geom geometry) RETURNS geometry 
+AS $$
+
+DECLARE
+	var_cent geometry := ST_Centroid(param_geom);
+    var_result geometry := var_cent;
+BEGIN
+-- If the centroid is outside the geometry then 
+-- calculate a box around centroid that is guaranteed to intersect the geometry
+-- take the intersection of that and find point on surface of intersection
+IF NOT ST_Intersects(param_geom, var_cent) THEN
+	var_result := ST_PointOnSurface(ST_Intersection(param_geom, ST_Expand(var_cent, ST_Distance(var_cent,param_geom)*2) ));
+END IF;
+RETURN var_result;
+END;
+$$
+LANGUAGE plpgsql IMMUTABLE STRICT
+COST 100;
 
 -- OTG_split_table () Teilt eine Tabelle v_table in 10 Einzeltabellen auf. Dabei ist die in v_parameter spezifizierte Spalte das Unterscheidungsmerkmal. Die Ursprüngliche Tabelle wird nach der Aufteilung gelöscht.
 
@@ -2375,7 +2395,6 @@ END; $$
 LANGUAGE plpgsql;
 
 -- OTG_plz_substation_110kV () 
-
 -- Function to assign substations to plz
 CREATE OR REPLACE FUNCTION otg_plz_substation_110kV () RETURNS void
 AS $$
@@ -2393,14 +2412,15 @@ IF (SELECT val_int
 	WHERE val_description = 'min_voltage') > 110000 -- Only if min Voltage is higher than 110kV 
 	THEN
 	CREATE TABLE plz_substation_110kV (
-		plz INT,
+		id SERIAL,
+		plz TEXT,
 		substation_id INT,
 		percentage NUMERIC,
 		distance NUMERIC
 		);
 
 
-	FOR v_plz_area IN SELECT plz::INT as plz, geom FROM plz_poly
+	FOR v_plz_area IN SELECT plz::TEXT as plz, geom FROM plz_poly
 	LOOP
 		INSERT INTO plz_substation_110kV (plz, substation_id)
 			SELECT v_plz_area.plz, id
@@ -2426,6 +2446,7 @@ IF (SELECT val_int
 			RAISE NOTICE 'remote added';							
 		END IF;
 
+
 		v_total_plz_power := (SELECT sum(s_long) 
 					FROM power_substation 
 					WHERE connection_110kV = 'TRUE' AND NOT power = 'plant' 
@@ -2442,6 +2463,18 @@ IF (SELECT val_int
 
 	RAISE NOTICE 'done';
 	END LOOP;
+
+	DELETE FROM plz_substation_110kV WHERE id IN (
+	SELECT tab1.id
+	FROM plz_substation_110kV tab1, plz_substation_110kV  tab2
+	WHERE tab1.plz=tab2.plz
+ 	 AND tab1.substation_id = tab2.substation_id
+ 	 AND tab1.id<>tab2.id
+ 	 AND tab1.id=(SELECT MIN(id) FROM plz_substation_110kV tab 
+ 	   WHERE tab.plz=tab1.plz AND tab.substation_id = tab1.substation_id));
+ 	   
+ 	ALTER TABLE plz_substation_110kV DROP COLUMN id;
+
 END IF;
 END;
 $$ LANGUAGE plpgsql;
@@ -2462,14 +2495,15 @@ BEGIN
 -- Creates new table for assignment of substations to plz
 DROP TABLE IF EXISTS plz_substation;
 CREATE TABLE plz_substation (
-	plz INT,
+	id SERIAL, 
+	plz TEXT,
 	substation_id INT,
 	percentage NUMERIC,
 	distance NUMERIC
 	);
 
 
-FOR v_plz_area IN SELECT plz::INT as plz, geom FROM plz_poly
+FOR v_plz_area IN SELECT plz::TEXT as plz, geom FROM plz_poly
 LOOP
 	INSERT INTO plz_substation (plz, substation_id)
 		SELECT v_plz_area.plz, id
@@ -2506,6 +2540,17 @@ LOOP
 
 RAISE NOTICE 'done';
 END LOOP;
+
+DELETE FROM plz_substation WHERE id IN (
+SELECT tab1.id
+FROM plz_substation tab1, plz_substation  tab2
+WHERE tab1.plz=tab2.plz
+  AND tab1.substation_id = tab2.substation_id
+  AND tab1.id<>tab2.id
+  AND tab1.id=(SELECT Min(id) FROM plz_substation tab 
+    WHERE tab.plz=tab1.plz AND tab.substation_id = tab1.substation_id));
+    
+ALTER TABLE plz_substation DROP COLUMN id;
 
 END;
 $$ LANGUAGE plpgsql;
