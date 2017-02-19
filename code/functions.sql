@@ -1,4 +1,4 @@
-﻿-----------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------
 --                                                                                 
 --  Copyright "2015" "Wuppertal Institut"                                         
 --                                                                                
@@ -2395,7 +2395,6 @@ END; $$
 LANGUAGE plpgsql;
 
 -- OTG_plz_substation_110kV () 
-
 -- Function to assign substations to plz
 CREATE OR REPLACE FUNCTION otg_plz_substation_110kV () RETURNS void
 AS $$
@@ -2447,6 +2446,7 @@ IF (SELECT val_int
 			RAISE NOTICE 'remote added';							
 		END IF;
 
+
 		v_total_plz_power := (SELECT sum(s_long) 
 					FROM power_substation 
 					WHERE connection_110kV = 'TRUE' AND NOT power = 'plant' 
@@ -2463,7 +2463,7 @@ IF (SELECT val_int
 
 	RAISE NOTICE 'done';
 	END LOOP;
-	
+
 	DELETE FROM plz_substation_110kV WHERE id IN (
 	SELECT tab1.id
 	FROM plz_substation_110kV tab1, plz_substation_110kV  tab2
@@ -2474,7 +2474,7 @@ IF (SELECT val_int
  	   WHERE tab.plz=tab1.plz AND tab.substation_id = tab1.substation_id));
  	   
  	ALTER TABLE plz_substation_110kV DROP COLUMN id;
- 	
+
 END IF;
 END;
 $$ LANGUAGE plpgsql;
