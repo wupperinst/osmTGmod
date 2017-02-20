@@ -102,6 +102,9 @@ CREATE TABLE problem_log (	object_type TEXT, -- Objekt-Typ des dargestellten Ele
 				frequency REAL,
 				problem TEXT); -- Beschreibung des entsprechenden Problems
 
+-- Datenbereinigung power_relation_applied_changes 400kV = 380 kV wenn die Relation nicht schon in einem Zubauplan verändert wurde 
+UPDATE power_relations_applied_changes SET voltage = '380000' WHERE voltage = '400000' AND frequency = '50' AND NOT user_id IS NULL;
+
 
 -- DATENUMWANDLUNG POWER_LINE 
 -- (Untersuchung aller in den OSM-ways enthaltenen Informationen)
@@ -125,7 +128,7 @@ CREATE INDEX power_line_way_gix ON power_line USING GIST (way);
 SELECT *
 	INTO power_substation
 	FROM power_ways_applied_changes
-	WHERE 	power = ANY (ARRAY ['substation','sub_station','station', 'plant']);
+	WHERE 	power = ANY (ARRAY ['substation','sub_station','station', 'plant']); --plant is increasing time to run script by factor 3
 
 -- Erstellt einen normalen Index auf ID
 CREATE INDEX substation_id_idx ON power_substation(id);
@@ -284,7 +287,7 @@ UPDATE power_line
 	SET
 	voltage_array [4] = 110000 WHERE voltage_array[4] = 60000;
 
-	
+
 		-- PROBLEM: NULL_voltage
 		-- (Es werden alle power_lines gelöscht, die keine Spannungsinformationen besitzen)
 	
@@ -357,6 +360,8 @@ UPDATE power_substation
 UPDATE power_substation
 	SET
 	voltage_array [4] = 110000 WHERE voltage_array[4] = 60000;
+
+	
 -- Pass information from voltage tag of substation into connection_110kv 
 UPDATE power_substation
 	SET connection_110kv = TRUE WHERE voltage_array[1] = 110000 OR voltage_array[2] = 110000 OR voltage_array[3] = 110000 OR voltage_array[4] = 110000;
@@ -1269,5 +1274,3 @@ ALTER TABLE bus_data ADD COLUMN qd REAL;
  -- Slack Bus benötigt Generator
  -- pd und qd der Buses von außerhalb vorgeben.
  -- Gleichstromleitung darf nur netzintegriert verwendet werden, damit GLS lösbar bleibt.
-
-
