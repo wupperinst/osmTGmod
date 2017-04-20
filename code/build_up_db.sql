@@ -263,7 +263,7 @@ INSERT INTO abstr_values VALUES (	DEFAULT,
 					NULL);
 INSERT INTO abstr_values VALUES (	DEFAULT,
 					'base_MVA',
-					100,
+					1,
 					NULL);
 INSERT INTO abstr_values VALUES (	DEFAULT,
 					'graph_dfs',

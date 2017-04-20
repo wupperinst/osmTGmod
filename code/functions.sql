@@ -2245,10 +2245,16 @@ FOR v_branch IN
 		
 		
 
-		v_S_long_MVA_sum_max := (10^(-6))*(SELECT max (S_long_sum) 
+		v_S_long_MVA_sum_max := (10^(-6))*(SELECT min (S_long_sum) 
 						FROM bus_data 
 						WHERE id = v_branch.f_bus OR id = v_branch.t_bus);
-
+						
+		IF NOT v_S_long_MVA_sum_max > 0 
+		THEN v_S_long_MVA_sum_max := (10^(-6))*(SELECT max (S_long_sum) 
+						FROM bus_data 
+						WHERE id = v_branch.f_bus OR id = v_branch.t_bus); END IF;
+		
+		v_S_long_MVA_sum_max = v_S_long_MVA_sum_max/2;
 		
 		v_U_OS := (SELECT max(voltage) FROM bus_data 
 					WHERE 	id = v_branch.f_bus OR 

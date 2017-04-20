@@ -128,7 +128,7 @@ CREATE INDEX power_line_way_gix ON power_line USING GIST (way);
 SELECT *
 	INTO power_substation
 	FROM power_ways_applied_changes
-	WHERE 	power = ANY (ARRAY ['substation','sub_station','station', 'plant']); --plant is increasing time to run script by factor 3
+	WHERE 	power = ANY (ARRAY ['substation','sub_station','station']); -- , 'plant' plant is increasing time to run script by factor 3
 
 -- Erstellt einen normalen Index auf ID
 CREATE INDEX substation_id_idx ON power_substation(id);
