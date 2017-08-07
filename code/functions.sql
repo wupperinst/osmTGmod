@@ -835,7 +835,9 @@ LOOP
 				-- Über all dort, wo cables noch unbekannt ist wird dann cables=3 geschrieben.
 				IF NOT otg_check_cable_complete (v_line.id, i) THEN 
 					UPDATE power_line 
-						SET cables_array [i] = 3 WHERE id = v_line.id;
+						SET cables_array [i] = 3,
+						cables_from_3_cables = true  
+						WHERE id = v_line.id;
 				END IF;
 			END LOOP;
 	END IF;
@@ -919,14 +921,16 @@ LOOP
 			END LOOP;
 
 			-- Wenn die Frequenz der eigenen Leitung NULL ist ... 
-			-- ... und die Frequenz aller Nachbarn gleich ist (count der Distincts = 1)
+			-- ... und die Frequenz aller Nachbarn gleich aber nicht NULL ist (count der Distincts = 1)
 			-- kann diese übernommen werden 
 			IF 	v_id_line.frequency_array [i] IS NULL AND
 				(SELECT count (*) = 1 
-					FROM (SELECT distinct on (frequency) frequency from all_neighbours) as freq)
+					FROM (SELECT distinct on (frequency) frequency from all_neighbours) as freq) 
+					AND NOT (SELECT frequency FROM all_neighbours LIMIT 1) IS NULL
 				THEN
 				UPDATE power_line 
-					SET frequency_array [i] = (SELECT frequency FROM all_neighbours LIMIT 1)
+					SET frequency_array [i] = (SELECT frequency FROM all_neighbours LIMIT 1),
+					frequency_from_neighbour = true
 					WHERE id = v_id_line.id;
 			END IF;
 			
@@ -955,10 +959,9 @@ LOOP
 				NOT (SELECT cables FROM all_neighbours) IS NULL
 				THEN
 				UPDATE power_line 
-					SET cables_array [i] = (SELECT cables FROM all_neighbours)
+					SET cables_array [i] = (SELECT cables FROM all_neighbours),
+					cables_from_neighbour = true
 					WHERE id = v_id_line.id;
-				UPDATE power_line 
-					SET cables_from_neighbour = true WHERE id = v_id_line.id;
 			END IF;
 				
 		END LOOP;
@@ -997,7 +1000,9 @@ LOOP
 		LOOP
 			IF NOT otg_check_cable_complete (v_line.id, i) THEN 
 				UPDATE power_line 
-					SET cables_array [i] = v_cables_left WHERE id = v_line.id;
+					SET cables_array [i] = v_cables_left,
+					cables_from_sum = true
+					WHERE id = v_line.id;
 			END IF;
 		END LOOP;
 
@@ -1770,7 +1775,8 @@ BEGIN
 			-- Durch das Schreiben der FRequenz kann kein Fehler entstehen
 			IF v_line.frequency_array [n] IS NULL THEN
 				UPDATE power_line 
-					SET frequency_array [n] = v_member.frequency
+					SET frequency_array [n] = v_member.frequency,
+					frequency_from_relation = true
 					WHERE id = v_line.id; END IF;
 					
 			UPDATE power_line 

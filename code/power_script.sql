@@ -128,7 +128,7 @@ CREATE INDEX power_line_way_gix ON power_line USING GIST (way);
 SELECT *
 	INTO power_substation
 	FROM power_ways_applied_changes
-	WHERE 	power = ANY (ARRAY ['substation','sub_station','station']); -- , 'plant' plant is increasing time to run script by factor 3
+	WHERE 	power = ANY (ARRAY ['substation','sub_station','station', 'plant']); -- , 'plant' plant is increasing time to run script by factor 3
 
 -- Erstellt einen normalen Index auf ID
 CREATE INDEX substation_id_idx ON power_substation(id);
@@ -453,17 +453,17 @@ UPDATE power_line SET all_neighbours = otg_get_all_neighbours (id);
 
 	-- CABLE- UND FREQUENCY-ANNAHME-ALGORITHMEN
 
--- Neue Spalte cables_from_neighbour, in die true eingetragen wird, sobald eine Leitung Informationen vom Nachbarn erhalten hat
--- Should be renamed to info_from_neighbour
+-- New columns which are set true if lines got information through certain heuristics
 ALTER TABLE power_line ADD COLUMN cables_from_neighbour BOOLEAN;
-
+ALTER TABLE power_line ADD COLUMN frequency_from_neighbour BOOLEAN;
+ALTER TABLE power_line ADD COLUMN cables_from_3_cables BOOLEAN;
+ALTER TABLE power_line ADD COLUMN cables_from_sum BOOLEAN;
 
 -- Annahme-Algorithmen werden ausgeführt
 -- Die Annahme-Algorithmen müssen vor der Subtraktion durch die circuits stattfinden...
 -- ... da diese Veränderungen an den power_lines vornehmen
 -- (Ein Problem, stellen hierbei z.B. cable=NULL einträge dar, bei denen keine cables abgezogen werden können...
 -- ... und damit auch cables_sum nicht eindeutig bleiben kann)
-
 SELECT otg_unknown_value_heuristic ();
 
 -- ASSUMPTION
@@ -822,6 +822,7 @@ DELETE FROM bus_data WHERE origin = 'rel' AND cnt = 0;
 -- Ist die Spannung des Stromkreises auf der Leitung nicht vorhanden (Mappingfehler) wird in problem_log geschrieben
 -- Grundlegend wird den Stromkreisspannung mehr "vertraut" als den Leitungsspannungen
 -- Frequenzen können von circuits unter bestimmten Bedingungn in power_lines geschrieben werden.
+ALTER TABLE power_line ADD COLUMN frequency_from_relation BOOLEAN;
 SELECT otg_substract_circuits() ;
 
 
