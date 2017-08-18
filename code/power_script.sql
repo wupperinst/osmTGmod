@@ -155,6 +155,12 @@ WHERE id IN
 (SELECT T2.id FROM power_substation T1, power_substation T2
 WHERE ST_contains(T2.poly, otg_point_inside_geometry(T1.poly)) AND T2.power = 'plant' AND T2.id <> T1.id);
 
+DELETE FROM power_substation -- also delete the plants and substations, which are within a substation!
+WHERE id IN
+(SELECT T1.id FROM power_substation T1, power_substation T2
+WHERE ST_contains(T2.poly, otg_point_inside_geometry(T1.poly)) AND (T1.power = 'plant' OR (T1.power != 'plant' AND T2.power != 'plant')) AND T2.id <> T1.id);
+
+
 	-- GEOMETRIE POWER_LINE
 	-- (Zunächst handelt es sich lediglich um geometrische Informationen - keine Topologie)
 
@@ -470,6 +476,9 @@ SELECT otg_unknown_value_heuristic ();
 -- Assumes that lines with 110kV with cables (at 110kV) IS NULL and freuq IS NULL or 50...
 -- receive cables=3
 SELECT otg_110kv_cables ();
+
+-- Do another heuristic to see if the 110 kV assumption can provide any further information on the other lines. 
+SELECT otg_unknown_value_heuristic ();
 
 
 -- DATENUMWANDLUNG CIRCUIT_MEMBERS
