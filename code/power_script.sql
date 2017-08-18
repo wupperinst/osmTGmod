@@ -149,17 +149,22 @@ ALTER TABLE power_substation DROP COLUMN way;
 -- Macht einen spatial Index auf Geometriespalte poly
 CREATE INDEX substation_poly_gix ON power_substation USING GIST (poly);
 
+SELECT AddGeometryColumn ('power_substation','point',4326,'POINT',2);
+UPDATE power_substation SET point = otg_point_inside_geometry(poly);
+CREATE INDEX substation_point_gix ON power_substation USING GIST (point);
+
 -- Delete all substations which are 'plants' and have a substation within their area. Takes quite a while... 
 DELETE FROM power_substation 
 WHERE id IN
 (SELECT T2.id FROM power_substation T1, power_substation T2
-WHERE ST_contains(T2.poly, otg_point_inside_geometry(T1.poly)) AND T2.power = 'plant' AND T2.id <> T1.id);
+WHERE ST_contains(T2.poly, T1.point) AND T2.power = 'plant' AND T2.id <> T1.id);
 
 DELETE FROM power_substation -- also delete the plants and substations, which are within a substation!
 WHERE id IN
 (SELECT T1.id FROM power_substation T1, power_substation T2
-WHERE ST_contains(T2.poly, otg_point_inside_geometry(T1.poly)) AND (T1.power = 'plant' OR (T1.power != 'plant' AND T2.power != 'plant')) AND T2.id <> T1.id);
+WHERE ST_contains(T2.poly, T1.point) AND (T1.power = 'plant' OR (T1.power != 'plant' AND T2.power != 'plant')) AND T2.id <> T1.id AND ST_Area(T1.poly) < ST_Area(T2.poly));
 
+ALTER TABLE power_substation DROP COLUMN point;
 
 	-- GEOMETRIE POWER_LINE
 	-- (Zunächst handelt es sich lediglich um geometrische Informationen - keine Topologie)
