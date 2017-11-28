@@ -102,6 +102,9 @@ CREATE TABLE problem_log (	object_type TEXT, -- Objekt-Typ des dargestellten Ele
 				frequency REAL,
 				problem TEXT); -- Beschreibung des entsprechenden Problems
 
+-- Datenbereinigung power_relation_applied_changes 400kV = 380 kV wenn die Relation nicht schon in einem Zubauplan verändert wurde 
+UPDATE power_relations_applied_changes SET voltage = '380000' WHERE voltage = '400000' AND frequency = '50' AND NOT user_id IS NULL;
+
 
 -- DATENUMWANDLUNG POWER_LINE 
 -- (Untersuchung aller in den OSM-ways enthaltenen Informationen)
@@ -125,7 +128,7 @@ CREATE INDEX power_line_way_gix ON power_line USING GIST (way);
 SELECT *
 	INTO power_substation
 	FROM power_ways_applied_changes
-	WHERE 	power = ANY (ARRAY ['substation','sub_station','station', 'plant']);
+	WHERE 	power = ANY (ARRAY ['substation','sub_station','station', 'plant']); -- , 'plant' plant is increasing time to run script by factor 3
 
 -- Erstellt einen normalen Index auf ID
 CREATE INDEX substation_id_idx ON power_substation(id);
@@ -146,11 +149,23 @@ ALTER TABLE power_substation DROP COLUMN way;
 -- Macht einen spatial Index auf Geometriespalte poly
 CREATE INDEX substation_poly_gix ON power_substation USING GIST (poly);
 
+SELECT AddGeometryColumn ('power_substation','point',4326,'POINT',2);
+UPDATE power_substation SET point = otg_point_inside_geometry(poly);
+CREATE INDEX substation_point_gix ON power_substation USING GIST (point);
+
 -- Delete all substations which are 'plants' and have a substation within their area. Takes quite a while... 
 DELETE FROM power_substation 
 WHERE id IN
 (SELECT T2.id FROM power_substation T1, power_substation T2
-WHERE ST_contains(T2.poly, otg_point_inside_geometry(T1.poly)) AND T2.power = 'plant' AND T2.id <> T1.id);
+WHERE ST_contains(T2.poly, T1.point) AND T2.power = 'plant' AND T2.id <> T1.id);
+
+DELETE FROM power_substation -- also delete the plants and substations, which are within a substation!
+WHERE id IN
+(SELECT T1.id FROM power_substation T1, power_substation T2
+WHERE ST_contains(T2.poly, T1.point) AND (T1.power = 'plant' OR (T1.power != 'plant' AND T2.power != 'plant')) AND T2.id <> T1.id AND ST_Area(T1.poly) < ST_Area(T2.poly));
+
+ALTER TABLE power_substation DROP COLUMN point;
+
 
 	-- GEOMETRIE POWER_LINE
 	-- (Zunächst handelt es sich lediglich um geometrische Informationen - keine Topologie)
@@ -284,7 +299,7 @@ UPDATE power_line
 	SET
 	voltage_array [4] = 110000 WHERE voltage_array[4] = 60000;
 
-	
+
 		-- PROBLEM: NULL_voltage
 		-- (Es werden alle power_lines gelöscht, die keine Spannungsinformationen besitzen)
 	
@@ -357,6 +372,8 @@ UPDATE power_substation
 UPDATE power_substation
 	SET
 	voltage_array [4] = 110000 WHERE voltage_array[4] = 60000;
+
+	
 -- Pass information from voltage tag of substation into connection_110kv 
 UPDATE power_substation
 	SET connection_110kv = TRUE WHERE voltage_array[1] = 110000 OR voltage_array[2] = 110000 OR voltage_array[3] = 110000 OR voltage_array[4] = 110000;
@@ -448,23 +465,26 @@ UPDATE power_line SET all_neighbours = otg_get_all_neighbours (id);
 
 	-- CABLE- UND FREQUENCY-ANNAHME-ALGORITHMEN
 
--- Neue Spalte cables_from_neighbour, in die true eingetragen wird, sobald eine Leitung Informationen vom Nachbarn erhalten hat
--- Should be renamed to info_from_neighbour
+-- New columns which are set true if lines got information through certain heuristics
 ALTER TABLE power_line ADD COLUMN cables_from_neighbour BOOLEAN;
-
+ALTER TABLE power_line ADD COLUMN frequency_from_neighbour BOOLEAN;
+ALTER TABLE power_line ADD COLUMN cables_from_3_cables BOOLEAN;
+ALTER TABLE power_line ADD COLUMN cables_from_sum BOOLEAN;
 
 -- Annahme-Algorithmen werden ausgeführt
 -- Die Annahme-Algorithmen müssen vor der Subtraktion durch die circuits stattfinden...
 -- ... da diese Veränderungen an den power_lines vornehmen
 -- (Ein Problem, stellen hierbei z.B. cable=NULL einträge dar, bei denen keine cables abgezogen werden können...
 -- ... und damit auch cables_sum nicht eindeutig bleiben kann)
-
 SELECT otg_unknown_value_heuristic ();
 
 -- ASSUMPTION
 -- Assumes that lines with 110kV with cables (at 110kV) IS NULL and freuq IS NULL or 50...
 -- receive cables=3
 SELECT otg_110kv_cables ();
+
+-- Do another heuristic to see if the 110 kV assumption can provide any further information on the other lines. 
+SELECT otg_unknown_value_heuristic ();
 
 
 -- DATENUMWANDLUNG CIRCUIT_MEMBERS
@@ -817,6 +837,7 @@ DELETE FROM bus_data WHERE origin = 'rel' AND cnt = 0;
 -- Ist die Spannung des Stromkreises auf der Leitung nicht vorhanden (Mappingfehler) wird in problem_log geschrieben
 -- Grundlegend wird den Stromkreisspannung mehr "vertraut" als den Leitungsspannungen
 -- Frequenzen können von circuits unter bestimmten Bedingungn in power_lines geschrieben werden.
+ALTER TABLE power_line ADD COLUMN frequency_from_relation BOOLEAN;
 SELECT otg_substract_circuits() ;
 
 
@@ -1269,5 +1290,3 @@ ALTER TABLE bus_data ADD COLUMN qd REAL;
  -- Slack Bus benötigt Generator
  -- pd und qd der Buses von außerhalb vorgeben.
  -- Gleichstromleitung darf nur netzintegriert verwendet werden, damit GLS lösbar bleibt.
-
-
