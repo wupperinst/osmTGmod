@@ -166,6 +166,7 @@ WHERE ST_contains(T2.poly, T1.point) AND (T1.power = 'plant' OR (T1.power != 'pl
 
 ALTER TABLE power_substation DROP COLUMN point;
 
+
 	-- GEOMETRIE POWER_LINE
 	-- (Zunächst handelt es sich lediglich um geometrische Informationen - keine Topologie)
 
